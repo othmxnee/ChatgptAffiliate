@@ -1,0 +1,19 @@
+{
+    "manifest_version": 3,
+    "name": "ChatGPT Affiliate Tooltip",
+    "version": "1.0",
+    "description": "Shows tooltips with affiliate links on product-related words in ChatGPT.",
+    "permissions": ["scripting", "activeTab"],
+    "host_permissions": ["https://chat.openai.com/*"],
+    "content_scripts": [
+      {
+        "matches": ["https://chat.openai.com/*"],
+        "js": ["content.js"],
+        "run_at": "document_idle"
+      }
+    ],
+    "action": {
+      "default_title": "Affiliate Tooltip"
+    }
+  }
+  
