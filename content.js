@@ -1,6 +1,6 @@
 console.log("🚀 Extension started — observing ChatGPT responses");
 
-const keywords = ['buy', 'price', 'Amazon', 'Walmart', 'order', 'product','Best','2025','deal','discount','offer','sale','coupon','shipping','return','exchange','refund','cart','checkout','payment','credit card','debit card','affiliate'];
+const keywords = ['buy', 'price', 'Amazon', 'Walmart', 'order', 'product'];
 const tooltipContainer = document.createElement('div');
 tooltipContainer.id = 'affiliate-tooltip-container';
 tooltipContainer.style.position = 'absolute';
@@ -16,10 +16,18 @@ const observer = new MutationObserver((mutations) => {
     for (const node of mutation.addedNodes) {
       if (node.nodeType !== 1) continue;
 
-      if (node.tagName === 'P' && node.hasAttribute('data-start')) {
-        handleParagraph(node);
+      // Check for various text elements
+      const textElements = [
+        'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 
+        'DIV', 'SPAN', 'LI', 'TD', 'TH'
+      ];
+      
+      if (textElements.includes(node.tagName)) {
+        handleTextElement(node);
       } else if (node.querySelectorAll) {
-        node.querySelectorAll('p[data-start]').forEach(p => handleParagraph(p));
+        // Look for all possible text containers
+        const selector = textElements.map(tag => tag.toLowerCase()).join(', ');
+        node.querySelectorAll(selector).forEach(element => handleTextElement(element));
       }
     }
   }
@@ -27,27 +35,52 @@ const observer = new MutationObserver((mutations) => {
 
 observer.observe(document.body, { childList: true, subtree: true });
 
-function handleParagraph(p) {
+function handleTextElement(element) {
   // Skip if already processed
-  if (processedParagraphs.has(p)) return;
+  if (processedParagraphs.has(element)) return;
   
-  if (observedParagraphs.has(p)) clearTimeout(observedParagraphs.get(p));
+  // Skip if element doesn't contain text or contains only child elements without direct text
+  const directText = getDirectTextContent(element);
+  if (!directText || directText.trim().length < 3) return;
+  
+  // Skip if element has too many child elements (likely a container, not content)
+  if (element.children.length > 5) return;
+  
+  // Skip script, style, and other non-content elements
+  const skipTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED'];
+  if (skipTags.includes(element.tagName)) return;
+  
+  if (observedParagraphs.has(element)) clearTimeout(observedParagraphs.get(element));
 
   const timeoutId = setTimeout(() => {
-    const fullText = p.innerText.trim();
+    const fullText = directText.trim();
     if (fullText.length > 5) {
-      console.log("✅ Stable paragraph detected:", fullText);
-      addKeywordHighlights(p);
-      processedParagraphs.add(p);
+      console.log(`✅ Stable text element detected (${element.tagName}):`, fullText);
+      addKeywordHighlights(element);
+      processedParagraphs.add(element);
     }
-    observedParagraphs.delete(p);
+    observedParagraphs.delete(element);
   }, 800);
 
-  observedParagraphs.set(p, timeoutId);
+  observedParagraphs.set(element, timeoutId);
 }
 
-function addKeywordHighlights(pElement) {
-  const originalText = pElement.textContent;
+function getDirectTextContent(element) {
+  // Get only direct text content, not from deep nested children
+  let text = '';
+  for (let node of element.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent;
+    } else if (node.nodeType === Node.ELEMENT_NODE && node.children.length <= 2) {
+      // Include text from simple nested elements (like <strong>, <em>, etc.)
+      text += node.textContent;
+    }
+  }
+  return text;
+}
+
+function addKeywordHighlights(element) {
+  const originalText = element.textContent;
   
   // Find all keyword matches first
   const allMatches = [];
@@ -95,15 +128,15 @@ function addKeywordHighlights(pElement) {
   `;
   
   // Make parent relative if not already
-  const computedStyle = window.getComputedStyle(pElement);
+  const computedStyle = window.getComputedStyle(element);
   if (computedStyle.position === 'static') {
-    pElement.style.position = 'relative';
+    element.style.position = 'relative';
   }
   
   // Create a canvas for text measurement
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  const styles = window.getComputedStyle(pElement);
+  const styles = window.getComputedStyle(element);
   context.font = `${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
   
   // Process each match
@@ -149,9 +182,9 @@ function addKeywordHighlights(pElement) {
     console.log(`Added highlight for "${matchText}" (${keyword}) at position ${beforeWidth}px`);
   });
   
-  // Add overlay to paragraph
+  // Add overlay to element
   if (overlay.children.length > 0) {
-    pElement.appendChild(overlay);
+    element.appendChild(overlay);
   }
 }
 
