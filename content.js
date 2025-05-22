@@ -1,6 +1,6 @@
 console.log("🚀 Extension started — observing ChatGPT responses");
 
-const keywords = ['buy', 'price', 'Amazon', 'Walmart', 'order', 'product'];
+const keywords = ['buy', 'price', 'Amazon', 'Walmart', 'order', 'product','airpods'];
 const tooltipContainer = document.createElement('div');
 tooltipContainer.id = 'affiliate-tooltip-container';
 tooltipContainer.style.position = 'absolute';
@@ -39,6 +39,12 @@ function handleTextElement(element) {
   // Skip if already processed
   if (processedParagraphs.has(element)) return;
   
+  // Skip ChatGPT internal elements and citations
+  if (element.textContent.includes('contentReference') || 
+      element.textContent.includes('oaicite') ||
+      element.querySelector('[data-citation]') ||
+      element.closest('[data-testid*="conversation"]') === null) return;
+  
   // Skip if element doesn't contain text or contains only child elements without direct text
   const directText = getDirectTextContent(element);
   if (!directText || directText.trim().length < 3) return;
@@ -53,14 +59,17 @@ function handleTextElement(element) {
   if (observedParagraphs.has(element)) clearTimeout(observedParagraphs.get(element));
 
   const timeoutId = setTimeout(() => {
-    const fullText = directText.trim();
-    if (fullText.length > 5) {
-      console.log(`✅ Stable text element detected (${element.tagName}):`, fullText);
+    // Double-check the element is still valid and hasn't changed
+    const currentText = getDirectTextContent(element);
+    if (currentText && currentText.trim().length > 5 && 
+        !currentText.includes('contentReference') && 
+        !currentText.includes('oaicite')) {
+      console.log(`✅ Stable text element detected (${element.tagName}):`, currentText.trim());
       addKeywordHighlights(element);
       processedParagraphs.add(element);
     }
     observedParagraphs.delete(element);
-  }, 800);
+  }, 1200);
 
   observedParagraphs.set(element, timeoutId);
 }
@@ -80,115 +89,116 @@ function getDirectTextContent(element) {
 }
 
 function addKeywordHighlights(element) {
-  const originalText = element.textContent;
+  // Skip if element already has highlights
+  if (element.querySelector('.affiliate-keyword')) return;
   
-  // Find all keyword matches first
-  const allMatches = [];
+  // Final check for ChatGPT internal content
+  if (element.textContent.includes('contentReference') || 
+      element.textContent.includes('oaicite') ||
+      element.textContent.includes(':contentReference')) {
+    console.log('⚠️ Skipping element with ChatGPT internal content');
+    return;
+  }
   
-  keywords.forEach(keyword => {
-    // Create a fresh regex for each keyword to avoid state issues
-    const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-    let match;
-    
-    // Reset regex lastIndex to ensure we start from beginning
-    regex.lastIndex = 0;
-    
-    while ((match = regex.exec(originalText)) !== null) {
-      allMatches.push({
-        text: match[0],
-        index: match.index,
-        keyword: keyword
-      });
-      
-      // Prevent infinite loop on zero-width matches
-      if (match.index === regex.lastIndex) {
-        regex.lastIndex++;
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: function(node) {
+        // Skip text nodes that contain ChatGPT citations or internal markup
+        if (node.textContent.includes('contentReference') || 
+            node.textContent.includes('oaicite') ||
+            node.textContent.includes(':contentReference')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
       }
-    }
-  });
-  
-  console.log(`Found ${allMatches.length} keyword matches:`, allMatches);
-  
-  if (allMatches.length === 0) return;
-  
-  // Sort matches by index to process them in order
-  allMatches.sort((a, b) => a.index - b.index);
-  
-  // Create overlay container
-  const overlay = document.createElement('div');
-  overlay.className = 'affiliate-overlay';
-  overlay.style.cssText = `
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 1;
-  `;
-  
-  // Make parent relative if not already
-  const computedStyle = window.getComputedStyle(element);
-  if (computedStyle.position === 'static') {
-    element.style.position = 'relative';
-  }
-  
-  // Create a canvas for text measurement
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  const styles = window.getComputedStyle(element);
-  context.font = `${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
-  
-  // Process each match
-  allMatches.forEach((matchData, index) => {
-    const { text: matchText, index: matchIndex, keyword } = matchData;
-    
-    // Create highlight span
-    const highlightSpan = document.createElement('span');
-    highlightSpan.textContent = matchText;
-    highlightSpan.className = 'affiliate-keyword';
-    highlightSpan.dataset.keyword = keyword;
-    highlightSpan.style.cssText = `
-      position: absolute;
-      color: #0066cc;
-      background: rgba(0, 123, 255, 0.1);
-      text-decoration: underline;
-      cursor: pointer;
-      pointer-events: auto;
-      border-radius: 3px;
-      padding: 1px 2px;
-      font-weight: 500;
-      z-index: 2;
-      white-space: nowrap;
-    `;
-    
-    // Calculate position using canvas text measurement
-    const beforeText = originalText.substring(0, matchIndex);
-    const beforeWidth = context.measureText(beforeText).width;
-    const matchWidth = context.measureText(matchText).width;
-    
-    // Position the highlight
-    highlightSpan.style.left = beforeWidth + 'px';
-    highlightSpan.style.width = matchWidth + 'px';
-    highlightSpan.style.top = '0px';
-    highlightSpan.style.height = '1.2em';
-    
-    // Add event listeners
-    highlightSpan.addEventListener('mouseenter', (e) => showTooltip(e.target, keyword));
-    highlightSpan.addEventListener('mouseleave', () => hideTooltip());
-    
-    overlay.appendChild(highlightSpan);
-    
-    console.log(`Added highlight for "${matchText}" (${keyword}) at position ${beforeWidth}px`);
-  });
-  
-  // Add overlay to element
-  if (overlay.children.length > 0) {
-    element.appendChild(overlay);
-  }
-}
+    },
+    false
+  );
 
-// Removed getTextWidth function as we now use canvas directly in addKeywordHighlights
+  const textNodes = [];
+  let node;
+  while (node = walker.nextNode()) {
+    if (node.textContent.trim().length > 0) {
+      textNodes.push(node);
+    }
+  }
+
+  // Process each text node
+  textNodes.forEach(textNode => {
+    const text = textNode.textContent;
+    const matches = [];
+    
+    // Find all keyword matches in this text node
+    keywords.forEach(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+      let match;
+      
+      while ((match = regex.exec(text)) !== null) {
+        matches.push({
+          text: match[0],
+          index: match.index,
+          length: match[0].length,
+          keyword: keyword
+        });
+        
+        if (match.index === regex.lastIndex) {
+          regex.lastIndex++;
+        }
+      }
+    });
+
+    if (matches.length === 0) return;
+
+    // Sort matches by index (reverse order for replacement)
+    matches.sort((a, b) => b.index - a.index);
+
+    // Create a document fragment to hold the new content
+    const fragment = document.createDocumentFragment();
+    let lastIndex = text.length;
+
+    // Process matches in reverse order to maintain indices
+    matches.forEach(match => {
+      // Add text after this match
+      if (lastIndex > match.index + match.length) {
+        const afterText = text.substring(match.index + match.length, lastIndex);
+        fragment.insertBefore(document.createTextNode(afterText), fragment.firstChild);
+      }
+
+      // Create highlighted span
+      const highlightSpan = document.createElement('span');
+      highlightSpan.textContent = match.text;
+      highlightSpan.className = 'affiliate-keyword';
+      highlightSpan.dataset.keyword = match.keyword;
+      highlightSpan.style.cssText = `
+        color: rgb(204, 204, 0);
+        text-decoration: underline;
+        cursor: pointer;
+        font-weight: 500;
+      `;
+
+      // Add event listeners
+      highlightSpan.addEventListener('mouseenter', (e) => showTooltip(e.target, match.keyword));
+      highlightSpan.addEventListener('mouseleave', () => hideTooltip());
+      
+      fragment.insertBefore(highlightSpan, fragment.firstChild);
+
+      lastIndex = match.index;
+    });
+
+    // Add text before first match
+    if (lastIndex > 0) {
+      const beforeText = text.substring(0, lastIndex);
+      fragment.insertBefore(document.createTextNode(beforeText), fragment.firstChild);
+    }
+
+    // Replace the original text node with the fragment
+    textNode.parentNode.replaceChild(fragment, textNode);
+    
+    console.log(`Added ${matches.length} highlights in text node`);
+  });
+}
 
 function showTooltip(anchor, keyword) {
   const rect = anchor.getBoundingClientRect();
@@ -313,4 +323,37 @@ function hideTooltip() {
 window.addEventListener('beforeunload', () => {
   observedParagraphs.forEach(timeoutId => clearTimeout(timeoutId));
   observedParagraphs.clear();
+});
+
+// Add additional observer for delayed content
+setTimeout(() => {
+  // Re-scan for any missed content after page is more stable
+  document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6').forEach(element => {
+    if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
+      const text = getDirectTextContent(element);
+      if (text && text.trim().length > 5 && 
+          !text.includes('contentReference') && 
+          !text.includes('oaicite')) {
+        handleTextElement(element);
+      }
+    }
+  });
+}, 3000);
+
+// Also scan when user stops scrolling (content is likely stable)
+let scrollTimeout;
+window.addEventListener('scroll', () => {
+  clearTimeout(scrollTimeout);
+  scrollTimeout = setTimeout(() => {
+    document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6').forEach(element => {
+      if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
+        const text = getDirectTextContent(element);
+        if (text && text.trim().length > 5 && 
+            !text.includes('contentReference') && 
+            !text.includes('oaicite')) {
+          handleTextElement(element);
+        }
+      }
+    });
+  }, 1000);
 });
