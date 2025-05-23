@@ -1,6 +1,8 @@
 console.log("🚀 Extension started — observing ChatGPT responses");
 
-const keywords = ['buy', 'price', 'Amazon', 'Walmart', 'order', 'product','airpods'];
+// Dynamic keywords will be populated by Gemini API
+let keywords = ['buy', 'price', 'Amazon', 'Walmart', 'order', 'product', 'airpods', 'discount', 'sale', 'deal', 'shopping', 'review', 'compare', 'best', 'cheap', 'phone', 'laptop', 'tablet', 'headphones', 'camera', 'smartwatch', 'monitor', 'keyboard', 'mouse'];
+
 const tooltipContainer = document.createElement('div');
 tooltipContainer.id = 'affiliate-tooltip-container';
 tooltipContainer.style.position = 'absolute';
@@ -10,6 +12,12 @@ document.body.appendChild(tooltipContainer);
 
 const processedParagraphs = new WeakSet();
 const observedParagraphs = new Map();
+let currentTooltipTimeout;
+let isTooltipHovered = false;
+let currentKeyword = null;
+
+// Cache for API responses to avoid repeated calls for same text
+const geminiCache = new Map();
 
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
@@ -35,6 +43,45 @@ const observer = new MutationObserver((mutations) => {
 
 observer.observe(document.body, { childList: true, subtree: true });
 
+async function detectProductsInText(text) {
+  // Check cache first
+  const cacheKey = text.trim();
+  if (geminiCache.has(cacheKey)) {
+    console.log("📋 Using cached Gemini response");
+    return geminiCache.get(cacheKey);
+  }
+
+  try {
+    console.log("🔍 Requesting product detection from background script...");
+    
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { action: 'detectProducts', text: text },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response);
+          }
+        }
+      );
+    });
+
+    if (response.success && response.products) {
+      console.log("✅ Products detected:", response.products);
+      // Cache the response
+      geminiCache.set(cacheKey, response.products);
+      return response.products;
+    } else {
+      console.warn("⚠️ Product detection failed:", response.error);
+      return [];
+    }
+  } catch (error) {
+    console.error("❌ Error communicating with background script:", error);
+    return [];
+  }
+}
+
 function handleTextElement(element) {
   // Skip if already processed
   if (processedParagraphs.has(element)) return;
@@ -58,15 +105,29 @@ function handleTextElement(element) {
   
   if (observedParagraphs.has(element)) clearTimeout(observedParagraphs.get(element));
 
-  const timeoutId = setTimeout(() => {
+  const timeoutId = setTimeout(async () => {
     // Double-check the element is still valid and hasn't changed
     const currentText = getDirectTextContent(element);
     if (currentText && currentText.trim().length > 5 && 
         !currentText.includes('contentReference') && 
         !currentText.includes('oaicite')) {
       console.log(`✅ Stable text element detected (${element.tagName}):`, currentText.trim());
-      addKeywordHighlights(element);
-      processedParagraphs.add(element);
+      
+      // Get products from Gemini API
+      const detectedProducts = await detectProductsInText(currentText);
+      
+      if (detectedProducts.length > 0) {
+        // Update keywords with detected products
+        keywords = [...new Set([...keywords, ...detectedProducts])];
+        console.log("🎯 Updated keywords with detected products:", detectedProducts);
+        
+        addKeywordHighlights(element);
+        processedParagraphs.add(element);
+      } else {
+        // Still process with default keywords if no products detected
+        addKeywordHighlights(element);
+        processedParagraphs.add(element);
+      }
     }
     observedParagraphs.delete(element);
   }, 1200);
@@ -178,9 +239,20 @@ function addKeywordHighlights(element) {
         font-weight: 500;
       `;
 
-      // Add event listeners
-      highlightSpan.addEventListener('mouseenter', (e) => showTooltip(e.target, match.keyword));
-      highlightSpan.addEventListener('mouseleave', () => hideTooltip());
+      // Add event listeners with improved hover handling
+      highlightSpan.addEventListener('mouseenter', (e) => {
+        clearTimeout(currentTooltipTimeout);
+        showTooltip(e.target, match.keyword);
+      });
+      
+      highlightSpan.addEventListener('mouseleave', (e) => {
+        // Add a small delay before hiding to allow user to move to tooltip
+        currentTooltipTimeout = setTimeout(() => {
+          if (!isTooltipHovered) {
+            hideTooltip();
+          }
+        }, 200);
+      });
       
       fragment.insertBefore(highlightSpan, fragment.firstChild);
 
@@ -201,6 +273,7 @@ function addKeywordHighlights(element) {
 }
 
 function showTooltip(anchor, keyword) {
+  currentKeyword = keyword;
   const rect = anchor.getBoundingClientRect();
   
   // Detect theme (light/dark mode)
@@ -228,6 +301,7 @@ function showTooltip(anchor, keyword) {
     ">
       <div style="margin-bottom: 8px;">
         <strong>🔗 Product Links for "${keyword}"</strong>
+        <span style="background: #0066cc; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 8px;">AI Detected</span>
       </div>
       <div style="margin-bottom: 8px;">
         <a href="https://amazon.com/s?k=${encodeURIComponent(keyword)}" target="_blank" 
@@ -313,22 +387,40 @@ function showTooltip(anchor, keyword) {
   tooltipContainer.style.top = `${top}px`;
   tooltipContainer.style.left = `${left}px`;
   tooltipContainer.style.display = 'block';
+  
+  // Add hover listeners to tooltip
+  const tooltipDiv = tooltipContainer.firstElementChild;
+  tooltipDiv.addEventListener('mouseenter', () => {
+    isTooltipHovered = true;
+    clearTimeout(currentTooltipTimeout);
+  });
+  
+  tooltipDiv.addEventListener('mouseleave', () => {
+    isTooltipHovered = false;
+    currentTooltipTimeout = setTimeout(() => {
+      hideTooltip();
+    }, 100);
+  });
 }
 
 function hideTooltip() {
   tooltipContainer.style.display = 'none';
+  isTooltipHovered = false;
+  currentKeyword = null;
 }
 
 // Clean up on page navigation
 window.addEventListener('beforeunload', () => {
   observedParagraphs.forEach(timeoutId => clearTimeout(timeoutId));
   observedParagraphs.clear();
+  geminiCache.clear();
 });
 
 // Add additional observer for delayed content
-setTimeout(() => {
+setTimeout(async () => {
   // Re-scan for any missed content after page is more stable
-  document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6').forEach(element => {
+  const elements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6');
+  for (const element of elements) {
     if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
       const text = getDirectTextContent(element);
       if (text && text.trim().length > 5 && 
@@ -337,15 +429,16 @@ setTimeout(() => {
         handleTextElement(element);
       }
     }
-  });
+  }
 }, 3000);
 
 // Also scan when user stops scrolling (content is likely stable)
 let scrollTimeout;
 window.addEventListener('scroll', () => {
   clearTimeout(scrollTimeout);
-  scrollTimeout = setTimeout(() => {
-    document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6').forEach(element => {
+  scrollTimeout = setTimeout(async () => {
+    const elements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6');
+    for (const element of elements) {
       if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
         const text = getDirectTextContent(element);
         if (text && text.trim().length > 5 && 
@@ -354,6 +447,6 @@ window.addEventListener('scroll', () => {
           handleTextElement(element);
         }
       }
-    });
+    }
   }, 1000);
 });
