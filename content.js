@@ -1,8 +1,5 @@
 console.log("🚀 Extension started — observing ChatGPT responses");
 
-// Dynamic keywords will be populated by Gemini API
-let keywords = ['buy', 'price', 'Amazon', 'Walmart', 'order', 'product', 'airpods', 'discount', 'sale', 'deal', 'shopping', 'review', 'compare', 'best', 'cheap', 'phone', 'laptop', 'tablet', 'headphones', 'camera', 'smartwatch', 'monitor', 'keyboard', 'mouse'];
-
 const tooltipContainer = document.createElement('div');
 tooltipContainer.id = 'affiliate-tooltip-container';
 tooltipContainer.style.position = 'absolute';
@@ -16,15 +13,11 @@ let currentTooltipTimeout;
 let isTooltipHovered = false;
 let currentKeyword = null;
 
-// Cache for API responses to avoid repeated calls for same text
-const geminiCache = new Map();
-
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     for (const node of mutation.addedNodes) {
       if (node.nodeType !== 1) continue;
 
-      // Check for various text elements
       const textElements = [
         'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 
         'DIV', 'SPAN', 'LI', 'TD', 'TH'
@@ -33,7 +26,6 @@ const observer = new MutationObserver((mutations) => {
       if (textElements.includes(node.tagName)) {
         handleTextElement(node);
       } else if (node.querySelectorAll) {
-        // Look for all possible text containers
         const selector = textElements.map(tag => tag.toLowerCase()).join(', ');
         node.querySelectorAll(selector).forEach(element => handleTextElement(element));
       }
@@ -44,16 +36,7 @@ const observer = new MutationObserver((mutations) => {
 observer.observe(document.body, { childList: true, subtree: true });
 
 async function detectProductsInText(text) {
-  // Check cache first
-  const cacheKey = text.trim();
-  if (geminiCache.has(cacheKey)) {
-    console.log("📋 Using cached Gemini response");
-    return geminiCache.get(cacheKey);
-  }
-
   try {
-    console.log("🔍 Requesting product detection from background script...");
-    
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { action: 'detectProducts', text: text },
@@ -67,65 +50,41 @@ async function detectProductsInText(text) {
       );
     });
 
-    if (response.success && response.products) {
-      console.log("✅ Products detected:", response.products);
-      // Cache the response
-      geminiCache.set(cacheKey, response.products);
-      return response.products;
-    } else {
-      console.warn("⚠️ Product detection failed:", response.error);
-      return [];
-    }
+    return response.success ? response.products : [];
+
   } catch (error) {
-    console.error("❌ Error communicating with background script:", error);
+    console.error("Error communicating with background:", error);
     return [];
   }
 }
 
 function handleTextElement(element) {
-  // Skip if already processed
   if (processedParagraphs.has(element)) return;
   
-  // Skip ChatGPT internal elements and citations
   if (element.textContent.includes('contentReference') || 
       element.textContent.includes('oaicite') ||
       element.querySelector('[data-citation]') ||
       element.closest('[data-testid*="conversation"]') === null) return;
   
-  // Skip if element doesn't contain text or contains only child elements without direct text
   const directText = getDirectTextContent(element);
   if (!directText || directText.trim().length < 3) return;
   
-  // Skip if element has too many child elements (likely a container, not content)
   if (element.children.length > 5) return;
   
-  // Skip script, style, and other non-content elements
   const skipTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED'];
   if (skipTags.includes(element.tagName)) return;
   
   if (observedParagraphs.has(element)) clearTimeout(observedParagraphs.get(element));
 
   const timeoutId = setTimeout(async () => {
-    // Double-check the element is still valid and hasn't changed
     const currentText = getDirectTextContent(element);
     if (currentText && currentText.trim().length > 5 && 
-        !currentText.includes('contentReference') && 
-        !currentText.includes('oaicite')) {
-      console.log(`✅ Stable text element detected (${element.tagName}):`, currentText.trim());
+        !currentText.includes('contentReference')) {
       
-      // Get products from Gemini API
       const detectedProducts = await detectProductsInText(currentText);
       
       if (detectedProducts.length > 0) {
-        // Update keywords with detected products
-        keywords = [...new Set([...keywords, ...detectedProducts])];
-        console.log("🎯 Updated keywords with detected products:", detectedProducts);
-        
-        addKeywordHighlights(element);
-        processedParagraphs.add(element);
-      } else {
-        // Still process with default keywords if no products detected
-        addKeywordHighlights(element);
+        addKeywordHighlights(element, detectedProducts);
         processedParagraphs.add(element);
       }
     }
@@ -136,40 +95,31 @@ function handleTextElement(element) {
 }
 
 function getDirectTextContent(element) {
-  // Get only direct text content, not from deep nested children
   let text = '';
   for (let node of element.childNodes) {
     if (node.nodeType === Node.TEXT_NODE) {
       text += node.textContent;
     } else if (node.nodeType === Node.ELEMENT_NODE && node.children.length <= 2) {
-      // Include text from simple nested elements (like <strong>, <em>, etc.)
       text += node.textContent;
     }
   }
   return text;
 }
 
-function addKeywordHighlights(element) {
-  // Skip if element already has highlights
-  if (element.querySelector('.affiliate-keyword')) return;
-  
-  // Final check for ChatGPT internal content
-  if (element.textContent.includes('contentReference') || 
-      element.textContent.includes('oaicite') ||
-      element.textContent.includes(':contentReference')) {
-    console.log('⚠️ Skipping element with ChatGPT internal content');
-    return;
-  }
-  
+function addKeywordHighlights(element, products) {
+  // Remove existing highlights first
+  element.querySelectorAll('.affiliate-keyword').forEach(el => {
+    el.replaceWith(el.textContent);
+  });
+
+  if (products.length === 0) return;
+
   const walker = document.createTreeWalker(
     element,
     NodeFilter.SHOW_TEXT,
     {
       acceptNode: function(node) {
-        // Skip text nodes that contain ChatGPT citations or internal markup
-        if (node.textContent.includes('contentReference') || 
-            node.textContent.includes('oaicite') ||
-            node.textContent.includes(':contentReference')) {
+        if (node.textContent.includes('contentReference')) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -186,14 +136,12 @@ function addKeywordHighlights(element) {
     }
   }
 
-  // Process each text node
   textNodes.forEach(textNode => {
     const text = textNode.textContent;
     const matches = [];
     
-    // Find all keyword matches in this text node
-    keywords.forEach(keyword => {
-      const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+    products.forEach(product => {
+      const regex = new RegExp(`\\b${escapeRegExp(product)}\\b`, 'gi');
       let match;
       
       while ((match = regex.exec(text)) !== null) {
@@ -201,7 +149,7 @@ function addKeywordHighlights(element) {
           text: match[0],
           index: match.index,
           length: match[0].length,
-          keyword: keyword
+          keyword: product
         });
         
         if (match.index === regex.lastIndex) {
@@ -212,22 +160,17 @@ function addKeywordHighlights(element) {
 
     if (matches.length === 0) return;
 
-    // Sort matches by index (reverse order for replacement)
     matches.sort((a, b) => b.index - a.index);
 
-    // Create a document fragment to hold the new content
     const fragment = document.createDocumentFragment();
     let lastIndex = text.length;
 
-    // Process matches in reverse order to maintain indices
     matches.forEach(match => {
-      // Add text after this match
       if (lastIndex > match.index + match.length) {
         const afterText = text.substring(match.index + match.length, lastIndex);
         fragment.insertBefore(document.createTextNode(afterText), fragment.firstChild);
       }
 
-      // Create highlighted span
       const highlightSpan = document.createElement('span');
       highlightSpan.textContent = match.text;
       highlightSpan.className = 'affiliate-keyword';
@@ -239,14 +182,12 @@ function addKeywordHighlights(element) {
         font-weight: 500;
       `;
 
-      // Add event listeners with improved hover handling
       highlightSpan.addEventListener('mouseenter', (e) => {
         clearTimeout(currentTooltipTimeout);
         showTooltip(e.target, match.keyword);
       });
       
       highlightSpan.addEventListener('mouseleave', (e) => {
-        // Add a small delay before hiding to allow user to move to tooltip
         currentTooltipTimeout = setTimeout(() => {
           if (!isTooltipHovered) {
             hideTooltip();
@@ -259,24 +200,23 @@ function addKeywordHighlights(element) {
       lastIndex = match.index;
     });
 
-    // Add text before first match
     if (lastIndex > 0) {
       const beforeText = text.substring(0, lastIndex);
       fragment.insertBefore(document.createTextNode(beforeText), fragment.firstChild);
     }
 
-    // Replace the original text node with the fragment
     textNode.parentNode.replaceChild(fragment, textNode);
-    
-    console.log(`Added ${matches.length} highlights in text node`);
   });
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function showTooltip(anchor, keyword) {
   currentKeyword = keyword;
   const rect = anchor.getBoundingClientRect();
   
-  // Detect theme (light/dark mode)
   const isDarkMode = document.documentElement.classList.contains('dark') || 
                      document.body.classList.contains('dark') ||
                      window.getComputedStyle(document.body).backgroundColor === 'rgb(52, 53, 65)';
@@ -372,7 +312,6 @@ function showTooltip(anchor, keyword) {
   let left = rect.left + window.scrollX;
   let top = rect.bottom + window.scrollY + 5;
   
-  // Adjust if tooltip goes off screen
   if (left + tooltipWidth > viewportWidth) {
     left = viewportWidth - tooltipWidth - 10;
   }
@@ -388,7 +327,6 @@ function showTooltip(anchor, keyword) {
   tooltipContainer.style.left = `${left}px`;
   tooltipContainer.style.display = 'block';
   
-  // Add hover listeners to tooltip
   const tooltipDiv = tooltipContainer.firstElementChild;
   tooltipDiv.addEventListener('mouseenter', () => {
     isTooltipHovered = true;
@@ -413,37 +351,33 @@ function hideTooltip() {
 window.addEventListener('beforeunload', () => {
   observedParagraphs.forEach(timeoutId => clearTimeout(timeoutId));
   observedParagraphs.clear();
-  geminiCache.clear();
 });
 
-// Add additional observer for delayed content
-setTimeout(async () => {
-  // Re-scan for any missed content after page is more stable
+// Rescan after initial load
+setTimeout(() => {
   const elements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6');
   for (const element of elements) {
     if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
       const text = getDirectTextContent(element);
       if (text && text.trim().length > 5 && 
-          !text.includes('contentReference') && 
-          !text.includes('oaicite')) {
+          !text.includes('contentReference')) {
         handleTextElement(element);
       }
     }
   }
 }, 3000);
 
-// Also scan when user stops scrolling (content is likely stable)
+// Scroll handler
 let scrollTimeout;
 window.addEventListener('scroll', () => {
   clearTimeout(scrollTimeout);
-  scrollTimeout = setTimeout(async () => {
+  scrollTimeout = setTimeout(() => {
     const elements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6');
     for (const element of elements) {
       if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
         const text = getDirectTextContent(element);
         if (text && text.trim().length > 5 && 
-            !text.includes('contentReference') && 
-            !text.includes('oaicite')) {
+            !text.includes('contentReference')) {
           handleTextElement(element);
         }
       }

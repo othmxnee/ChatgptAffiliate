@@ -1,18 +1,19 @@
-// background.js - Gemini API service for product detection
-const GEMINI_API_KEY = 'AIzaSyDxfyjUFLba7TbmDo50SU2zGbNs2U1bhOc'; // Replace with your real API key
+const GEMINI_API_KEY = 'AIzaSyDxfyjUFLba7TbmDo50SU2zGbNs2U1bhOc';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 console.log("🚀 Background script started - Gemini API service ready");
 
 async function detectProductsWithGemini(text) {
   try {
-    console.log("📡 Calling Gemini API to detect products...");
-    
-    const prompt = `Analyze the following text and extract all product names(for ex "Npoclk Portable Air Conditioner","Flexzilla Garden Hose","Rest Evercool Cooling Comforter"... ), i want to search for them in amazon , walmart ... by their names . Return ONLY a JSON array of strings containing the detected products. Do not include any explanations or additional text.
+    const prompt = `Analyze this text and extract SPECIFIC PRODUCT NAMES . 
+Return ONLY a JSON array of product strings. Follow these rules:
+1. Include only tangible products (electronics, appliances)
+2. Include exact model numbers when available (e.g., "iPhone 15 Pro Max")
+3. Exclude generic terms like "buy", "price", or retailer names
+4. Exclude abstract concepts and services
+5. Prioritize brand + product name combinations
 
-Text to analyze: "${text}"
-
-Example response format: ["iPhone", "MacBook", "Nike shoes", "Samsung TV"]`;
+Text: "${text}"`;
 
     const requestBody = {
       contents: [{
@@ -21,6 +22,7 @@ Example response format: ["iPhone", "MacBook", "Nike shoes", "Samsung TV"]`;
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 1000,
+        response_mime_type: "application/json"
       }
     };
 
@@ -35,37 +37,35 @@ Example response format: ["iPhone", "MacBook", "Nike shoes", "Samsung TV"]`;
     }
 
     const data = await response.json();
+    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
     
-    // Updated response parsing for Gemini 2.0 Flash
-    if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      const geminiResponse = data.candidates[0].content.parts[0].text;
+    let products = [];
+    try {
+      const cleanResponse = responseText
+        .replace(/```json|```/g, '')
+        .replace(/\b(products|items)\b\s*:/gi, '')
+        .trim();
       
-      try {
-        const cleanResponse = geminiResponse.replace(/```json|```/g, '').trim();
-        const products = JSON.parse(cleanResponse);
-        
-        if (Array.isArray(products)) {
-          console.log("🎯 Products detected by Gemini:", products);
-          return products;
-        }
-      } catch (parseError) {
-        console.warn("⚠️ Failed to parse Gemini response:", parseError);
-        const productMatches = geminiResponse.match(/["']([^"']+)["']/g) || [];
-        return productMatches.map(match => match.replace(/["']/g, ''));
+      products = JSON.parse(cleanResponse);
+      
+      if (!Array.isArray(products)) {
+        throw new Error('Response is not an array');
       }
+    } catch (parseError) {
+      products = [...new Set(responseText.match(/"([^"]+)"/g) || [])]
+        .map(m => m.replace(/"/g, ''))
+        .filter(p => p.length > 2 && !/\b(amazon|walmart|buy|price)\b/i.test(p));
     }
-    
-    return [];
-    
+
+    console.log('Detected products:', products);
+    return products;
+
   } catch (error) {
-    console.error("❌ Error calling Gemini API:", error);
-    // Fallback to basic keyword detection
-    const fallbackKeywords = ['buy', 'price', 'Amazon', 'Walmart', /* ... */];
-    return fallbackKeywords.filter(kw => text.toLowerCase().includes(kw.toLowerCase()));
+    console.error("Gemini Error:", error);
+    return [];
   }
 }
 
-// Message listener remains the same
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'detectProducts') {
     detectProductsWithGemini(request.text)
@@ -75,10 +75,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Test function updated for new model
+// Optional: Add periodic API health check
 async function testGeminiConnection() {
   try {
-    const testResponse = await detectProductsWithGemini("I want to buy an iPhone and MacBook");
+    const testResponse = await detectProductsWithGemini(
+      "I'm considering buying the Sony WH-1000XM5 headphones and a Google Pixel 8 Pro."
+    );
     console.log("✅ API test successful. Response:", testResponse);
   } catch (error) {
     console.error("❌ API test failed:", error);
