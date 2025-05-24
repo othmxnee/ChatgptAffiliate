@@ -1,45 +1,23 @@
+
 {
-  "manifest_version": 3,
-  "name": "ChatGPT Product Highlighter with AI Detection",
-  "version": "2.0",
-  "description": "Automatically detects and highlights products in ChatGPT responses using Gemini AI, with affiliate links and tooltips",
-  
-  "permissions": [
-    "activeTab",
-    "storage"
-  ],
-  
-  "host_permissions": [
-    "https://chat.openai.com/*",
-    "https://chatgpt.com/*",
-    "https://generativelanguage.googleapis.com/*"
-  ],
-  
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
-  
-  "content_scripts": [
-    {
-      "matches": [
-        "https://chat.openai.com/*",
-        "https://chatgpt.com/*"
-      ],
-      "js": ["content.js"],
-      "run_at": "document_end"
-    }
-  ],
-  
- 
-  
-  "web_accessible_resources": [
-    {
-      "resources": ["content.js"],
-      "matches": [
-        "https://chat.openai.com/*",
-        "https://chatgpt.com/*"
-      ]
-    }
-  ]
-}
+    "manifest_version": 3,
+    "name": "ChatGPT Product Detector",
+    "version": "1.1",
+
+    "description": "Detects product recommendations in ChatGPT responses and logs to console",
+    "permissions": [
+      "activeTab"
+    ],
+    "host_permissions": [
+      "https://chat.openai.com/*",
+      "https://chatgpt.com/*",
+      "http://localhost:3000/*"
+    ],
+    "content_scripts": [
+      {
+        "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+        "js": ["content.js"],
+        "run_at": "document_end"
+      }
+    ]
+  }

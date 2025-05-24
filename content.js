@@ -1,386 +1,174 @@
-console.log("🚀 Extension started — observing ChatGPT responses");
+console.log('🔍 ChatGPT Product Detector loaded and waiting for full response...');
 
-const tooltipContainer = document.createElement('div');
-tooltipContainer.id = 'affiliate-tooltip-container';
-tooltipContainer.style.position = 'absolute';
-tooltipContainer.style.zIndex = '9999';
-tooltipContainer.style.pointerEvents = 'none';
-document.body.appendChild(tooltipContainer);
+let processedResponses = new Set();
+const SERVER_URL = 'http://localhost:3000/detect-products';
+let debounceTimer = null;
+let lastChangeTime = Date.now();
 
-const processedParagraphs = new WeakSet();
-const observedParagraphs = new Map();
-let currentTooltipTimeout;
-let isTooltipHovered = false;
-let currentKeyword = null;
-
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    for (const node of mutation.addedNodes) {
-      if (node.nodeType !== 1) continue;
-
-      const textElements = [
-        'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 
-        'DIV', 'SPAN', 'LI', 'TD', 'TH'
-      ];
-      
-      if (textElements.includes(node.tagName)) {
-        handleTextElement(node);
-      } else if (node.querySelectorAll) {
-        const selector = textElements.map(tag => tag.toLowerCase()).join(', ');
-        node.querySelectorAll(selector).forEach(element => handleTextElement(element));
-      }
-    }
+// Highlight detected products
+function highlightProducts(element, products) {
+  if (!products || !Array.isArray(products) || products.length === 0) {
+    console.log('❌ No products to highlight');
+    return;
   }
-});
 
-observer.observe(document.body, { childList: true, subtree: true });
-
-async function detectProductsInText(text) {
   try {
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        { action: 'detectProducts', text: text },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        }
-      );
-    });
+    let html = element.innerHTML;
+    console.log('🎯 Highlighting', products.length, 'products');
 
-    return response.success ? response.products : [];
-
-  } catch (error) {
-    console.error("Error communicating with background:", error);
-    return [];
-  }
-}
-
-function handleTextElement(element) {
-  if (processedParagraphs.has(element)) return;
-  
-  if (element.textContent.includes('contentReference') || 
-      element.textContent.includes('oaicite') ||
-      element.querySelector('[data-citation]') ||
-      element.closest('[data-testid*="conversation"]') === null) return;
-  
-  const directText = getDirectTextContent(element);
-  if (!directText || directText.trim().length < 3) return;
-  
-  if (element.children.length > 5) return;
-  
-  const skipTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED'];
-  if (skipTags.includes(element.tagName)) return;
-  
-  if (observedParagraphs.has(element)) clearTimeout(observedParagraphs.get(element));
-
-  const timeoutId = setTimeout(async () => {
-    const currentText = getDirectTextContent(element);
-    if (currentText && currentText.trim().length > 5 && 
-        !currentText.includes('contentReference')) {
-      
-      const detectedProducts = await detectProductsInText(currentText);
-      
-      if (detectedProducts.length > 0) {
-        addKeywordHighlights(element, detectedProducts);
-        processedParagraphs.add(element);
-      }
-    }
-    observedParagraphs.delete(element);
-  }, 1200);
-
-  observedParagraphs.set(element, timeoutId);
-}
-
-function getDirectTextContent(element) {
-  let text = '';
-  for (let node of element.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      text += node.textContent;
-    } else if (node.nodeType === Node.ELEMENT_NODE && node.children.length <= 2) {
-      text += node.textContent;
-    }
-  }
-  return text;
-}
-
-function addKeywordHighlights(element, products) {
-  // Remove existing highlights first
-  element.querySelectorAll('.affiliate-keyword').forEach(el => {
-    el.replaceWith(el.textContent);
-  });
-
-  if (products.length === 0) return;
-
-  const walker = document.createTreeWalker(
-    element,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode: function(node) {
-        if (node.textContent.includes('contentReference')) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    },
-    false
-  );
-
-  const textNodes = [];
-  let node;
-  while (node = walker.nextNode()) {
-    if (node.textContent.trim().length > 0) {
-      textNodes.push(node);
-    }
-  }
-
-  textNodes.forEach(textNode => {
-    const text = textNode.textContent;
-    const matches = [];
-    
     products.forEach(product => {
-      const regex = new RegExp(`\\b${escapeRegExp(product)}\\b`, 'gi');
-      let match;
-      
-      while ((match = regex.exec(text)) !== null) {
-        matches.push({
-          text: match[0],
-          index: match.index,
-          length: match[0].length,
-          keyword: product
-        });
-        
-        if (match.index === regex.lastIndex) {
-          regex.lastIndex++;
-        }
+      if (!product || typeof product !== 'string') return;
+
+      const cleanProduct = product.trim();
+      if (cleanProduct.length < 3) return;
+
+      try {
+        const regex = new RegExp(`(${cleanProduct.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        html = html.replace(regex, `<span class="product-highlight" style="background-color: #ffeb3b; font-weight: bold; padding: 2px 4px; border-radius: 3px; border: 1px solid #fbc02d; color: #333;">$1</span>`);
+        console.log(`✅ Highlighted: "${cleanProduct}"`);
+      } catch {
+        console.log(`⚠️ Could not highlight: "${cleanProduct}"`);
       }
     });
 
-    if (matches.length === 0) return;
+    element.innerHTML = html;
+  } catch (error) {
+    console.error('❌ Error in highlightProducts:', error);
+  }
+}
 
-    matches.sort((a, b) => b.index - a.index);
+// Send text to server for product detection
+async function detectAndLogProducts(responseElement) {
+  const text = responseElement.innerText || responseElement.textContent || '';
+  if (!text || text.length < 100) {
+    console.log('⚠️ Text too short, skipping detection');
+    return;
+  }
 
-    const fragment = document.createDocumentFragment();
-    let lastIndex = text.length;
+  const textHash = text.length + '_' + text.substring(0, 100);
+  if (processedResponses.has(textHash)) {
+    console.log('⏭️ Already processed this response');
+    return;
+  }
 
-    matches.forEach(match => {
-      if (lastIndex > match.index + match.length) {
-        const afterText = text.substring(match.index + match.length, lastIndex);
-        fragment.insertBefore(document.createTextNode(afterText), fragment.firstChild);
-      }
+  processedResponses.add(textHash);
+  console.log('📤 Sending to product detector...');
 
-      const highlightSpan = document.createElement('span');
-      highlightSpan.textContent = match.text;
-      highlightSpan.className = 'affiliate-keyword';
-      highlightSpan.dataset.keyword = match.keyword;
-      highlightSpan.style.cssText = `
-        color: rgb(204, 204, 0);
-        text-decoration: underline;
-        cursor: pointer;
-        font-weight: 500;
-      `;
-
-      highlightSpan.addEventListener('mouseenter', (e) => {
-        clearTimeout(currentTooltipTimeout);
-        showTooltip(e.target, match.keyword);
-      });
-      
-      highlightSpan.addEventListener('mouseleave', (e) => {
-        currentTooltipTimeout = setTimeout(() => {
-          if (!isTooltipHovered) {
-            hideTooltip();
-          }
-        }, 200);
-      });
-      
-      fragment.insertBefore(highlightSpan, fragment.firstChild);
-
-      lastIndex = match.index;
+  try {
+    const response = await fetch(SERVER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text }),
     });
 
-    if (lastIndex > 0) {
-      const beforeText = text.substring(0, lastIndex);
-      fragment.insertBefore(document.createTextNode(beforeText), fragment.firstChild);
+    if (!response.ok) {
+      console.error('❌ Server error:', response.status);
+      return;
     }
 
-    textNode.parentNode.replaceChild(fragment, textNode);
-  });
-}
+    const result = await response.json();
 
-function escapeRegExp(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+    console.group('🛍️ DETECTED PRODUCTS');
+    console.log('📝 Text length:', text.length, 'characters');
 
-function showTooltip(anchor, keyword) {
-  currentKeyword = keyword;
-  const rect = anchor.getBoundingClientRect();
-  
-  const isDarkMode = document.documentElement.classList.contains('dark') || 
-                     document.body.classList.contains('dark') ||
-                     window.getComputedStyle(document.body).backgroundColor === 'rgb(52, 53, 65)';
-  
-  const bgColor = isDarkMode ? '#2d2d2d' : '#fff';
-  const textColor = isDarkMode ? '#fff' : '#000';
-  const borderColor = isDarkMode ? '#444' : '#ccc';
+    if (Array.isArray(result) && result.length > 0) {
+      console.log('✅ Found', result.length, 'products:');
+      result.forEach((product, index) => {
+        console.log(`  ${index + 1}. ${product}`);
+      });
+      highlightProducts(responseElement, result);
+    } else {
+      console.log('📊 No products detected');
+    }
 
-  tooltipContainer.innerHTML = `
-    <div style="
-      background: ${bgColor};
-      color: ${textColor};
-      border: 1px solid ${borderColor};
-      padding: 12px;
-      width: 320px;
-      max-width: 90vw;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      border-radius: 8px;
-      font-size: 13px;
-      pointer-events: auto;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    ">
-      <div style="margin-bottom: 8px;">
-        <strong>🔗 Product Links for "${keyword}"</strong>
-        <span style="background: #0066cc; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 8px;">AI Detected</span>
-      </div>
-      <div style="margin-bottom: 8px;">
-        <a href="https://amazon.com/s?k=${encodeURIComponent(keyword)}" target="_blank" 
-           style="color: #0066cc; text-decoration: none; display: block; margin: 4px 0;">
-          📦 Amazon Search
-        </a>
-        <a href="https://walmart.com/search?q=${encodeURIComponent(keyword)}" target="_blank"
-           style="color: #0066cc; text-decoration: none; display: block; margin: 4px 0;">
-          🛒 Walmart Search
-        </a>
-      </div>
-      <details style="margin-top: 8px;">
-        <summary style="cursor: pointer; padding: 4px 0; font-weight: 500;">More options</summary>
-        <ul style="margin: 8px 0 0 0; padding-left: 20px;">
-          <li style="margin: 4px 0;">
-            <a href="https://ebay.com/sch/i.html?_nkw=${encodeURIComponent(keyword)}" target="_blank"
-               style="color: #0066cc; text-decoration: none;">eBay Search</a>
-          </li>
-          <li style="margin: 4px 0;">
-            <a href="https://target.com/s?searchTerm=${encodeURIComponent(keyword)}" target="_blank"
-               style="color: #0066cc; text-decoration: none;">Target Search</a>
-          </li>
-          <li style="margin: 4px 0;">
-            <a href="https://bestbuy.com/site/searchpage.jsp?st=${encodeURIComponent(keyword)}" target="_blank"
-               style="color: #0066cc; text-decoration: none;">Best Buy Search</a>
-          </li>
-        </ul>
-      </details>
-      <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid ${borderColor}; font-size: 11px;">
-        <details>
-          <summary style="cursor: pointer; color: #666;">Feedback</summary>
-          <div style="margin-top: 8px;">
-            <textarea placeholder="Your feedback..." style="
-              width: 100%; 
-              height: 60px; 
-              padding: 6px; 
-              border: 1px solid ${borderColor}; 
-              border-radius: 4px;
-              background: ${bgColor};
-              color: ${textColor};
-              font-size: 12px;
-              resize: vertical;
-            "></textarea>
-            <button style="
-              background: #0066cc; 
-              color: white; 
-              border: none; 
-              padding: 6px 12px; 
-              border-radius: 4px; 
-              cursor: pointer; 
-              font-size: 12px;
-              margin-top: 6px;
-            " onclick="alert('Feedback submitted! (This is a demo)')">
-              Submit
-            </button>
-          </div>
-        </details>
-      </div>
-    </div>
-  `;
-
-  // Position tooltip
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const tooltipWidth = 320;
-  const tooltipHeight = 200;
-  
-  let left = rect.left + window.scrollX;
-  let top = rect.bottom + window.scrollY + 5;
-  
-  if (left + tooltipWidth > viewportWidth) {
-    left = viewportWidth - tooltipWidth - 10;
+    console.groupEnd();
+  } catch (error) {
+    console.error('❌ Error detecting products:', error);
+    processedResponses.delete(textHash); // allow retry
   }
-  if (left < 10) {
-    left = 10;
-  }
-  
-  if (top + tooltipHeight > viewportHeight + window.scrollY) {
-    top = rect.top + window.scrollY - tooltipHeight - 5;
-  }
-
-  tooltipContainer.style.top = `${top}px`;
-  tooltipContainer.style.left = `${left}px`;
-  tooltipContainer.style.display = 'block';
-  
-  const tooltipDiv = tooltipContainer.firstElementChild;
-  tooltipDiv.addEventListener('mouseenter', () => {
-    isTooltipHovered = true;
-    clearTimeout(currentTooltipTimeout);
-  });
-  
-  tooltipDiv.addEventListener('mouseleave', () => {
-    isTooltipHovered = false;
-    currentTooltipTimeout = setTimeout(() => {
-      hideTooltip();
-    }, 100);
-  });
 }
 
-function hideTooltip() {
-  tooltipContainer.style.display = 'none';
-  isTooltipHovered = false;
-  currentKeyword = null;
-}
+// Find and process ChatGPT responses
+function processResponses() {
+  try {
+    const selectors = [
+      '[data-message-author-role="assistant"]',
+      '[data-testid*="conversation-turn"]:has([data-message-author-role="assistant"])',
+      '.group.w-full:has([data-message-author-role="assistant"])'
+    ];
 
-// Clean up on page navigation
-window.addEventListener('beforeunload', () => {
-  observedParagraphs.forEach(timeoutId => clearTimeout(timeoutId));
-  observedParagraphs.clear();
-});
+    let assistantMessages = [];
 
-// Rescan after initial load
-setTimeout(() => {
-  const elements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6');
-  for (const element of elements) {
-    if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
-      const text = getDirectTextContent(element);
-      if (text && text.trim().length > 5 && 
-          !text.includes('contentReference')) {
-        handleTextElement(element);
+    for (const selector of selectors) {
+      const elements = document.querySelectorAll(selector);
+      if (elements.length > 0) {
+        assistantMessages = Array.from(elements);
+        console.log(`📍 Found ${elements.length} messages with: ${selector}`);
+        break;
       }
     }
-  }
-}, 3000);
 
-// Scroll handler
-let scrollTimeout;
-window.addEventListener('scroll', () => {
-  clearTimeout(scrollTimeout);
-  scrollTimeout = setTimeout(() => {
-    const elements = document.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6');
-    for (const element of elements) {
-      if (!processedParagraphs.has(element) && !observedParagraphs.has(element)) {
-        const text = getDirectTextContent(element);
-        if (text && text.trim().length > 5 && 
-            !text.includes('contentReference')) {
-          handleTextElement(element);
-        }
-      }
+    if (assistantMessages.length === 0) {
+      console.log('❌ No assistant messages found');
+      return;
     }
-  }, 1000);
+
+    const lastMessage = assistantMessages[assistantMessages.length - 1];
+    const text = lastMessage.innerText || lastMessage.textContent || '';
+
+    if (text.length > 100) {
+      console.log(`📝 Processing response (${text.length} chars)...`);
+      detectAndLogProducts(lastMessage);
+    } else {
+      console.log('⚠️ Last response too short');
+    }
+  } catch (error) {
+    console.error('❌ Error in processResponses:', error);
+  }
+}
+
+// Handle stable delay (15s of no mutations)
+function scheduleFinalProcessing() {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    const now = Date.now();
+    const delay = now - lastChangeTime;
+
+    if (delay >= 5000) {
+      console.log('⏱️ 15s passed with no changes. Processing response...');
+      processResponses();
+    } else {
+      console.log(`⏳ Not yet stable (only ${Math.floor(delay / 1000)}s). Waiting...`);
+      scheduleFinalProcessing(); // Reschedule
+    }
+  }, 15000); // 15 seconds
+}
+
+// Observe page changes
+const observer = new MutationObserver(mutations => {
+  const relevant = mutations.some(m => m.type === 'childList' && m.addedNodes.length > 0);
+
+  if (relevant) {
+    lastChangeTime = Date.now();
+    console.log('📌 DOM changed, resetting 15s wait timer...');
+    scheduleFinalProcessing();
+  }
 });
+
+try {
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+  console.log('👀 Started observing DOM for response completion...');
+} catch (e) {
+  console.error('❌ Failed to start MutationObserver:', e);
+}
+
+// Backup periodic check every 30s
+setInterval(() => {
+  console.log('🕒 Backup periodic check...');
+  processResponses();
+}, 30000);
+
+console.log('✅ Product Detector initialized and waiting for stable responses...');
