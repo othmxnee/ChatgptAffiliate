@@ -1,19 +1,28 @@
-//server.js
+// server.js
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+// Note: In Node 18+ 'fetch' is available globally. If you're on an older Node version,
+// you can install node-fetch (`npm install node-fetch`) and then:
+// const fetch = require('node-fetch');
 
 const app = express();
 const port = 3000;
 
-// Replace with your actual API key
-const genAI = new GoogleGenerativeAI('AIzaSyDxfyjUFLba7TbmDo50SU2zGbNs2U1bhOc');
+// ====================
+// Replace these with your actual CJ Affiliate credentials:
+const CJ_API_BASE_URL = 'https://ads.api.cj.com/';
+const CJ_COMPANY_ID = 7546327;
+const CJ_API_TOKEN = '_WAACYG-K6gq63WULgxMKbsybw'; // your "token:" value
+// ====================
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 async function detectProducts(text) {
+  const { GoogleGenerativeAI } = require('@google/generative-ai');
+  // Replace with your actual API key
+  const genAI = new GoogleGenerativeAI('AIzaSyDxfyjUFLba7TbmDo50SU2zGbNs2U1bhOc');
   const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   const prompt = `
@@ -47,22 +56,22 @@ Return only the JSON array, no other text:`;
 
     console.log("Raw Gemini response:");
     console.log(output);
-    
+
     // Clean up the response to extract JSON
     output = output.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
+
     // Remove any text before the first [ and after the last ]
     const startIndex = output.indexOf('[');
     const endIndex = output.lastIndexOf(']');
-    
+
     if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
       output = output.substring(startIndex, endIndex + 1);
     }
-    
+
     // Try to parse JSON from the response
     try {
       const products = JSON.parse(output);
-      
+
       // Validate that we got an array
       if (Array.isArray(products)) {
         // Clean up the products array - remove empty strings and duplicates
@@ -80,17 +89,17 @@ Return only the JSON array, no other text:`;
     }
   } catch (error) {
     console.error("Gemini API Error:", error);
-    
+
     // Check if it's a network error
     if (error.message.includes('fetch failed')) {
       throw new Error('Network error: Could not connect to Gemini API. Check your internet connection.');
     }
-    
+
     // Check if it's an API key error
     if (error.message.includes('API key')) {
       throw new Error('API key error: Please check your Gemini API key.');
     }
-    
+
     throw error;
   }
 }
@@ -98,9 +107,9 @@ Return only the JSON array, no other text:`;
 // Fallback function to manually extract products using regex patterns
 function extractProductsManually(text) {
   console.log("Using manual product extraction...");
-  
+
   const products = [];
-  
+
   // Pattern to match bullet points with product names
   const bulletPatterns = [
     /\*\s*\*\*([^*]+(?:\([^)]+\))?[^*]*)\*\*/g, // **Product Name (details)**
@@ -108,7 +117,7 @@ function extractProductsManually(text) {
     /\d+\.\s*\*\*([^*]+(?:\([^)]+\))?[^*]*)\*\*/g, // 1. **Product Name (details)**
     /\d+\.\s*([A-Z][^\n]+(?:\([^)]+\))?)/g // 1. Product Name (details)
   ];
-  
+
   bulletPatterns.forEach(pattern => {
     let match;
     while ((match = pattern.exec(text)) !== null) {
@@ -118,13 +127,13 @@ function extractProductsManually(text) {
       }
     }
   });
-  
+
   // Also look for products mentioned with recommendation keywords
   const recommendationPatterns = [
     /(?:consider|recommend|suggest|try|popular|great|good for|best)\s+([A-Z][^.!?\n]+(?:\([^)]+\))?)/gi,
     /([A-Z][A-Za-z\s]+(?:\([^)]+\))?)\s*[-–]\s*(?:popular|great|good|recommended|excellent)/gi
   ];
-  
+
   recommendationPatterns.forEach(pattern => {
     let match;
     while ((match = pattern.exec(text)) !== null) {
@@ -134,7 +143,7 @@ function extractProductsManually(text) {
       }
     }
   });
-  
+
   console.log("Manually extracted products:", products);
   return products.length > 0 ? products : { rawResponse: "No products found", error: "Manual extraction failed" };
 }
@@ -143,45 +152,199 @@ function extractProductsManually(text) {
 app.post('/detect-products', async (req, res) => {
   try {
     const { text } = req.body;
-    
+
     if (!text) {
       return res.status(400).json({ error: 'Text is required' });
     }
-    
+
     console.log('Received text for analysis:', text.substring(0, 200) + '...');
-    
+
     const products = await detectProducts(text);
-    
+
     res.json(products);
   } catch (error) {
     console.error('Server error:', error);
-    
+
     // Send more specific error messages
     if (error.message.includes('Network error')) {
-      res.status(503).json({ 
+      res.status(503).json({
         error: 'Service unavailable: Cannot connect to Gemini API',
-        details: error.message 
+        details: error.message
       });
     } else if (error.message.includes('API key')) {
-      res.status(401).json({ 
+      res.status(401).json({
         error: 'Authentication error: Invalid API key',
-        details: error.message 
+        details: error.message
       });
     } else {
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
-        details: error.message 
+        details: error.message
       });
     }
   }
 });
 
+// ===========================
+// CORRECTED: CJ Affiliate Search Endpoint (matching working curl)
+// ===========================
+app.post('/search-cj-affiliate', async (req, res) => {
+  try {
+    const { keyword } = req.body;
+    if (!keyword) {
+      return res.status(400).json({ success: false, error: 'Keyword is required' });
+    }
+
+    console.log(`🔍 /search-cj-affiliate called with keyword: "${keyword}"`);
+
+    // Build the GraphQL query object (matching your working curl command)
+    const gqlQuery = {
+      query: `query { shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 1) { resultList { title price { amount currency } } } }`
+    };
+
+    console.log('📋 GraphQL Query Object:', JSON.stringify(gqlQuery, null, 2));
+
+    // Use the correct endpoint with /query path (matching your working curl)
+    const requestUrl = 'https://ads.api.cj.com/query';
+
+    console.log('🌐 Request URL:', requestUrl);
+    console.log('🔑 Using API Token:', CJ_API_TOKEN);
+
+    // Make the POST request to CJ Affiliate (matching your working curl exactly)
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${CJ_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(gqlQuery)
+    });
+
+    console.log('📊 Response Status:', response.status);
+    console.log('📊 Response Headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ CJ Affiliate API Error Response:', errorText);
+      return res.status(response.status).json({
+        success: false,
+        error: `CJ Affiliate API returned ${response.status}`,
+        details: errorText
+      });
+    }
+
+    const responseText = await response.text();
+    console.log('📝 Raw Response Text:', responseText);
+
+    try {
+      const json = JSON.parse(responseText);
+      console.log('📦 Parsed JSON Response:', JSON.stringify(json, null, 2));
+
+      // Check for GraphQL errors
+      if (json.errors) {
+        console.error('❌ GraphQL Errors:', json.errors);
+        return res.status(400).json({
+          success: false,
+          error: 'GraphQL errors',
+          details: json.errors
+        });
+      }
+
+      const productsList = json.data?.shoppingProducts?.resultList || [];
+      console.log('🛍️ Products List Length:', productsList.length);
+
+      if (productsList.length === 0) {
+        console.log('⚠️ No products found for keyword:', keyword);
+        return res.json({
+          success: true,
+          products: [],
+          totalCount: 0,
+          message: `No products found for "${keyword}"`
+        });
+      }
+
+      const firstProduct = productsList[0];
+      const title = firstProduct.title || '';
+      const amount = firstProduct.price?.amount ?? null;
+      const currency = firstProduct.price?.currency ?? '';
+
+      console.log('✅ First CJ product found:', { title, amount, currency });
+
+      return res.json({
+        success: true,
+        product: {
+          title,
+          amount,
+          currency
+        },
+        totalCount: productsList.length,
+        keyword: keyword
+      });
+
+    } catch (jsonErr) {
+      console.error('❌ JSON parse error:', jsonErr);
+      console.error('📄 Response text that failed to parse:', responseText);
+      return res.status(500).json({
+        success: false,
+        error: 'Invalid JSON response from CJ Affiliate',
+        details: jsonErr.message,
+        rawResponse: responseText.substring(0, 500) // First 500 chars for debugging
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ /search-cj-affiliate crash:', error);
+    console.error('📍 Error stack:', error.stack);
+    
+    // More specific error handling
+    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      return res.status(503).json({
+        success: false,
+        error: 'Network error: Cannot connect to CJ Affiliate API',
+        details: error.message
+      });
+    }
+
+    if (error.name === 'AbortError') {
+      return res.status(408).json({
+        success: false,
+        error: 'Request timeout',
+        details: 'CJ Affiliate API request timed out'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// ===========================
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Test endpoint for CJ Affiliate (GET request for easier testing)
+app.get('/test-cj/:keyword', async (req, res) => {
+  const keyword = req.params.keyword;
+  console.log(`🧪 Testing CJ Affiliate with keyword: "${keyword}"`);
+  
+  // Create a mock request object and call the POST endpoint
+  const mockReq = { body: { keyword } };
+  await app._router.layers.find(layer => 
+    layer.route && layer.route.path === '/search-cj-affiliate'
+  ).route.stack[0].handle(mockReq, res);
 });
 
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
-  console.log('Enhanced product detection ready!');
+  console.log(`🚀 Server running at http://localhost:${port}`);
+  console.log('✅ Product detection and CJ Affiliate search ready!');
+  console.log('📋 Available endpoints:');
+  console.log('  POST /detect-products');
+  console.log('  POST /search-cj-affiliate');
+  console.log('  GET  /test-cj/:keyword');
+  console.log('  GET  /health');
 });

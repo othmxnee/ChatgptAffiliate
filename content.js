@@ -4,10 +4,11 @@ console.log('🔍 ChatGPT Product Detector loaded and waiting for full response.
 
 let processedResponses = new Set();
 const SERVER_URL = 'http://localhost:3000/detect-products';
+const CJ_SEARCH_URL = 'http://localhost:3000/search-cj-affiliate';
 let debounceTimer = null;
 let lastChangeTime = Date.now();
 
-// Create tooltip container using your working approach
+// Create tooltip container
 let tooltipContainer = document.createElement('div');
 tooltipContainer.style.cssText = `
   position: absolute;
@@ -18,6 +19,47 @@ tooltipContainer.style.cssText = `
 document.body.appendChild(tooltipContainer);
 
 let observedElements = new Map();
+let currentSearches = new Map(); // Track ongoing searches
+
+// Search CJ Affiliate for product
+async function searchCJAffiliate(keyword) {
+  if (currentSearches.has(keyword)) {
+    console.log(`⏳ Search already in progress for: "${keyword}"`);
+    return currentSearches.get(keyword);
+  }
+
+  console.log(`🔍 Searching CJ Affiliate for: "${keyword}"`);
+  
+  const searchPromise = fetch(CJ_SEARCH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword: keyword }),
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(`Server error: ${response.status}`);
+    }
+    return response.json();
+  })
+  .then(data => {
+    console.log(`✅ CJ Affiliate results for "${keyword}":`, data);
+    return data;
+  })
+  .catch(error => {
+    console.error(`❌ CJ Affiliate search failed for "${keyword}":`, error);
+    return {
+      success: false,
+      error: error.message,
+      product: null
+    };
+  })
+  .finally(() => {
+    currentSearches.delete(keyword);
+  });
+
+  currentSearches.set(keyword, searchPromise);
+  return searchPromise;
+}
 
 function showTooltip(anchor, keyword) {
   const rect = anchor.getBoundingClientRect();
@@ -26,10 +68,11 @@ function showTooltip(anchor, keyword) {
                      document.body.classList.contains('dark') ||
                      window.getComputedStyle(document.body).backgroundColor === 'rgb(52, 53, 65)';
   
-  const bgColor = isDarkMode ? '#2d2d2d' : '#fff';
-  const textColor = isDarkMode ? '#fff' : '#000';
-  const borderColor = isDarkMode ? '#444' : '#ccc';
+  const bgColor = isDarkMode ? '#2d2d2d' : '#ffffff';
+  const textColor = isDarkMode ? '#ffffff' : '#000000';
+  const borderColor = isDarkMode ? '#444444' : '#cccccc';
 
+  // Initial tooltip HTML: loading state for CJ affiliate
   tooltipContainer.innerHTML = `
     <div style="
       background: ${bgColor};
@@ -45,73 +88,37 @@ function showTooltip(anchor, keyword) {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     ">
       <div style="margin-bottom: 8px;">
-        <strong>🔗 Product Links for "${keyword}"</strong>
+        <strong style="font-size: 14px;">🛍️ CJ Affiliate Search: "${keyword}"</strong>
       </div>
-      <div style="margin-bottom: 8px;">
-        <a href="https://amazon.com/s?k=${encodeURIComponent(keyword)}" target="_blank" 
-           style="color: #0066cc; text-decoration: none; display: block; margin: 4px 0;">
-          📦 Amazon Search
-        </a>
-        <a href="https://walmart.com/search?q=${encodeURIComponent(keyword)}" target="_blank"
-           style="color: #0066cc; text-decoration: none; display: block; margin: 4px 0;">
-          🛒 Walmart Search
-        </a>
+      <div id="cj-loading" style="display: flex; align-items: center; margin-bottom: 8px;">
+        <div style="
+          width: 16px; 
+          height: 16px; 
+          border: 2px solid ${borderColor}; 
+          border-top: 2px solid #ff6b35; 
+          border-radius: 50%; 
+          animation: spin 1s linear infinite;
+        "></div>
+        <span style="margin-left: 8px; font-size: 12px;">Loading CJ result…</span>
       </div>
-      <details style="margin-top: 8px;">
-        <summary style="cursor: pointer; padding: 4px 0; font-weight: 500;">More options</summary>
-        <ul style="margin: 8px 0 0 0; padding-left: 20px;">
-          <li style="margin: 4px 0;">
-            <a href="https://ebay.com/sch/i.html?_nkw=${encodeURIComponent(keyword)}" target="_blank"
-               style="color: #0066cc; text-decoration: none;">eBay Search</a>
-          </li>
-          <li style="margin: 4px 0;">
-            <a href="https://target.com/s?searchTerm=${encodeURIComponent(keyword)}" target="_blank"
-               style="color: #0066cc; text-decoration: none;">Target Search</a>
-          </li>
-          <li style="margin: 4px 0;">
-            <a href="https://bestbuy.com/site/searchpage.jsp?st=${encodeURIComponent(keyword)}" target="_blank"
-               style="color: #0066cc; text-decoration: none;">Best Buy Search</a>
-          </li>
-        </ul>
-      </details>
-      <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid ${borderColor}; font-size: 11px;">
-        <details>
-          <summary style="cursor: pointer; color: #666;">Feedback</summary>
-          <div style="margin-top: 8px;">
-            <textarea placeholder="Your feedback..." style="
-              width: 100%; 
-              height: 60px; 
-              padding: 6px; 
-              border: 1px solid ${borderColor}; 
-              border-radius: 4px;
-              background: ${bgColor};
-              color: ${textColor};
-              font-size: 12px;
-              resize: vertical;
-            "></textarea>
-            <button style="
-              background: #0066cc; 
-              color: white; 
-              border: none; 
-              padding: 6px 12px; 
-              border-radius: 4px; 
-              cursor: pointer; 
-              font-size: 12px;
-              margin-top: 6px;
-            " onclick="alert('Feedback submitted! (This is a demo)')">
-              Submit
-            </button>
-          </div>
-        </details>
+      <div id="cj-results" style="font-size: 13px; color: ${textColor};">
+        <!-- Result will be injected here -->
       </div>
+      <style>
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
     </div>
   `;
 
+  // Position tooltip below the anchor, adjusting if it goes outside viewport
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const tooltipWidth = 320;
-  const tooltipHeight = 200;
-  
+  const tooltipWidth = 320; 
+  const tooltipHeight = 100; // initial guess; will expand if needed
+
   let left = rect.left + window.scrollX;
   let top = rect.bottom + window.scrollY + 5;
   
@@ -131,6 +138,41 @@ function showTooltip(anchor, keyword) {
   tooltipContainer.style.display = 'block';
   
   console.log(`✅ Tooltip displayed for "${keyword}" at (${left}, ${top})`);
+
+  // Fetch CJ Affiliate data
+  searchCJAffiliate(keyword).then(result => {
+    const loadingElement = document.getElementById('cj-loading');
+    const resultsElement = document.getElementById('cj-results');
+
+    if (loadingElement) loadingElement.style.display = 'none';
+    
+    if (!resultsElement) return;
+
+    if (result.success && result.product) {
+      const { title, amount, currency } = result.product;
+      const priceDisplay = (amount !== null && currency) ? `${amount} ${currency}` : 'N/A';
+
+      resultsElement.innerHTML = `
+        <div style="margin-bottom: 6px; font-weight: bold; font-size: 14px;">
+          ${title.length > 70 ? title.substring(0, 67) + '…' : title}
+        </div>
+        <div style="font-size: 13px; color: #ff6b35; font-weight: 600;">
+          ${priceDisplay}
+        </div>
+      `;
+      console.log(`📌 Displayed CJ result: Title="${title}", Price="${priceDisplay}"`);
+    } else {
+      const msg = result.error 
+        ? `Error: ${result.error}` 
+        : 'No CJ Affiliate product found.';
+      resultsElement.innerHTML = `
+        <div style="font-size: 13px; color: #888; font-style: italic;">
+          ${msg}
+        </div>
+      `;
+      console.log(`ℹ️ CJ result status: ${msg}`);
+    }
+  });
 }
 
 function hideTooltip() {
@@ -138,7 +180,7 @@ function hideTooltip() {
   console.log('👻 Tooltip hidden');
 }
 
-// Highlight detected products using your working approach
+// Highlight detected products (unchanged from your original approach)
 function highlightProducts(element, products) {
   if (!products || !Array.isArray(products) || products.length === 0) {
     console.log('❌ No products to highlight');
@@ -146,7 +188,7 @@ function highlightProducts(element, products) {
   }
 
   console.log('🎯 Highlighting', products.length, 'products');
-  
+
   try {
     let html = element.innerHTML;
     
@@ -157,7 +199,7 @@ function highlightProducts(element, products) {
       if (cleanProduct.length < 3) return;
       
       try {
-        // More precise regex to avoid over-matching
+        // Escape for regex
         const escapedProduct = cleanProduct.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`\\b(${escapedProduct})\\b`, 'gi');
         
@@ -184,73 +226,67 @@ function highlightProducts(element, products) {
     
     element.innerHTML = html;
     
-    // Add event listeners using your working approach
+    // Add event listeners
     const highlights = element.querySelectorAll('.product-highlight');
     console.log(`🎯 Found ${highlights.length} highlighted elements`);
     
-    highlights.forEach((span, index) => {
-      console.log(`🔗 Adding events to highlight ${index + 1}: "${span.textContent}"`);
+  highlights.forEach((span, index) => {
+    console.log(`🔗 Adding events to highlight ${index + 1}: "${span.textContent}"`);
+    
+    let hoverTimeout;
+    
+    span.addEventListener('mouseenter', function() {
+      console.log(`🖱️ Mouse entered: "${this.textContent}"`);
+
+      // Clear any pending hide
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+      }
       
-      let hoverTimeout;
+      // Visual feedback
+      this.style.backgroundColor = '#fdd835';
+      this.style.transform = 'scale(1.05)';
       
-      span.addEventListener('mouseenter', function(e) {
-        console.log(`🖱️ Mouse entered: "${this.textContent}"`);
-        
-        // Clear any existing timeout
-        if (hoverTimeout) {
-          clearTimeout(hoverTimeout);
-        }
-        
-        // Visual feedback
-        this.style.backgroundColor = '#fdd835';
-        this.style.transform = 'scale(1.05)';
-        
-        const productName = this.getAttribute('data-product') || this.textContent.trim();
-        
-        // Show tooltip immediately
-        showTooltip(this, productName);
-      });
-      
-      span.addEventListener('mouseleave', function() {
-        console.log(`🖱️ Mouse left: "${this.textContent}"`);
-        
-        // Reset visual feedback
-        this.style.backgroundColor = '#ffeb3b';
-        this.style.transform = 'scale(1)';
-        
-        // Hide tooltip after delay to allow moving to tooltip
-        hoverTimeout = setTimeout(() => {
-          if (!tooltipContainer.matches(':hover')) {
-            hideTooltip();
-          }
-        }, 300);
-      });
-      
-      span.addEventListener('click', function(e) {
-        e.preventDefault();
-        console.log(`🖱️ Clicked: "${this.textContent}"`);
-        
-        const productName = this.getAttribute('data-product') || this.textContent.trim();
-        const searchUrl = `https://amazon.com/s?k=${encodeURIComponent(productName)}`;
-        window.open(searchUrl, '_blank');
-      });
-      
-      // Store reference for cleanup
-      observedElements.set(span, hoverTimeout);
+      const productName = this.getAttribute('data-product') || this.textContent.trim();
+      showTooltip(this, productName);
     });
     
-    console.log(`✅ Added event listeners to ${highlights.length} highlights`);
+    span.addEventListener('mouseleave', function() {
+      console.log(`🖱️ Mouse left: "${this.textContent}"`);
+      
+      // Reset visual feedback
+      this.style.backgroundColor = '#ffeb3b';
+      this.style.transform = 'scale(1)';
+      
+      // Delay hiding tooltip to allow moving into it
+      hoverTimeout = setTimeout(() => {
+        if (!tooltipContainer.matches(':hover')) {
+          hideTooltip();
+        }
+      }, 300);
+    });
     
-  } catch (error) {
-    console.error('❌ Error in highlightProducts:', error);
-  }
+    span.addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log(`🖱️ Clicked: "${this.textContent}"`);
+      // No additional click action; CJ tooltip is primary
+    });
+    
+    // Store reference for cleanup
+    observedElements.set(span, hoverTimeout);
+  });
+  
+  console.log(`✅ Added event listeners to ${highlights.length} highlights`);
+  
+} catch (error) {
+  console.error('❌ Error in highlightProducts:', error);
+}
 }
 
-// Add tooltip hover handling
+// Tooltip mouse interactions
 tooltipContainer.addEventListener('mouseenter', function() {
   console.log('🖱️ Mouse entered tooltip');
 });
-
 tooltipContainer.addEventListener('mouseleave', function() {
   console.log('🖱️ Mouse left tooltip');
   hideTooltip();
@@ -282,9 +318,8 @@ async function detectAndLogProducts(responseElement) {
 
     if (!response.ok) {
       console.error('❌ Server error:', response.status);
-      // For testing, add fake products when server fails
-      console.log('🧪 Server failed, adding test products...');
-      highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods', 'Tesla']);
+      console.log('🧪 Server failed, adding test products for debugging...');
+      highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods']);
       return;
     }
 
@@ -301,22 +336,20 @@ async function detectAndLogProducts(responseElement) {
       highlightProducts(responseElement, result);
     } else {
       console.log('📊 No products detected');
-      // For testing purposes, add some fake products
       console.log('🧪 Adding test products for debugging...');
-      highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods', 'Tesla']);
+      highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods']);
     }
 
     console.groupEnd();
   } catch (error) {
     console.error('❌ Error detecting products:', error);
-    // For testing, add fake products when server fails
-    console.log('🧪 Server failed, adding test products...');
-    highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods', 'Tesla']);
+    console.log('🧪 Server failed, adding test products for debugging...');
+    highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods']);
     processedResponses.delete(textHash); // allow retry
   }
 }
 
-// Find and process ChatGPT responses
+// Find and process ChatGPT assistant responses
 function processResponses() {
   try {
     const selectors = [
@@ -355,7 +388,7 @@ function processResponses() {
   }
 }
 
-// Handle stable delay (15s of no mutations)
+// Wait until DOM is stable for 5s without changes before processing
 function scheduleFinalProcessing() {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
@@ -363,13 +396,13 @@ function scheduleFinalProcessing() {
     const delay = now - lastChangeTime;
 
     if (delay >= 5000) {
-      console.log('⏱️ 15s passed with no changes. Processing response...');
+      console.log('⏱️ 5s passed with no changes. Processing response...');
       processResponses();
     } else {
       console.log(`⏳ Not yet stable (only ${Math.floor(delay / 1000)}s). Waiting...`);
-      scheduleFinalProcessing(); // Reschedule
+      scheduleFinalProcessing();
     }
-  }, 15000); // 15 seconds
+  }, 5000); // 5 seconds
 }
 
 // Observe page changes
@@ -378,7 +411,7 @@ const observer = new MutationObserver(mutations => {
 
   if (relevant) {
     lastChangeTime = Date.now();
-    console.log('📌 DOM changed, resetting 15s wait timer...');
+    console.log('📌 DOM changed, resetting 5s wait timer...');
     scheduleFinalProcessing();
   }
 });
@@ -405,4 +438,4 @@ window.addEventListener('beforeunload', () => {
   observedElements.clear();
 });
 
-console.log('✅ Product Detector initialized with working tooltip system...');
+console.log('✅ Product Detector initialized with CJ Affiliate integration...');
