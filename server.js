@@ -197,23 +197,10 @@ app.post('/search-cj-affiliate', async (req, res) => {
 
     console.log(`🔍 /search-cj-affiliate called with keyword: "${keyword}"`);
 
-    // Build the GraphQL query object with image and link data
+    // Build the GraphQL query object (matching your working curl command)
+    // Added imageLink and link fields for image and affiliate link
     const gqlQuery = {
-      query: `query { 
-        shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 1) { 
-          resultList { 
-            title 
-            price { 
-              amount 
-              currency 
-            }
-            imageLink
-            link
-            description
-            advertiserName
-          } 
-        } 
-      }`
+      query: `query { shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 1) { resultList { title price { amount currency } imageLink link } } }`
     };
 
     console.log('📋 GraphQL Query Object:', JSON.stringify(gqlQuery, null, 2));
@@ -281,19 +268,10 @@ app.post('/search-cj-affiliate', async (req, res) => {
       const title = firstProduct.title || '';
       const amount = firstProduct.price?.amount ?? null;
       const currency = firstProduct.price?.currency ?? '';
-      const imageLink = firstProduct.imageLink || null;
-      const link = firstProduct.link || null;
-      const description = firstProduct.description || '';
-      const advertiserName = firstProduct.advertiserName || '';
+      const imageLink = firstProduct.imageLink || '';
+      const link = firstProduct.link || '';
 
-      console.log('✅ First CJ product found:', { 
-        title, 
-        amount, 
-        currency, 
-        imageLink, 
-        link, 
-        advertiserName 
-      });
+      console.log('✅ First CJ product found:', { title, amount, currency, imageLink, link });
 
       return res.json({
         success: true,
@@ -302,9 +280,7 @@ app.post('/search-cj-affiliate', async (req, res) => {
           amount,
           currency,
           imageLink,
-          link,
-          description,
-          advertiserName
+          link
         },
         totalCount: productsList.length,
         keyword: keyword
