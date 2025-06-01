@@ -78,28 +78,28 @@ function showTooltip(anchor, keyword) {
       background: ${bgColor};
       color: ${textColor};
       border: 1px solid ${borderColor};
-      padding: 12px;
-      width: 320px;
+      padding: 16px;
+      width: 350px;
       max-width: 90vw;
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      border-radius: 8px;
+      border-radius: 12px;
       font-size: 13px;
       pointer-events: auto;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: -apple-system, BlinkCodeMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     ">
-      <div style="margin-bottom: 8px;">
-        <strong style="font-size: 14px;">🛍️ CJ Affiliate Search: "${keyword}"</strong>
+      <div style="margin-bottom: 12px;">
+        <div style="font-size: 12px; color: #888; margin-top: 2px;">Searching for: "${keyword}"</div>
       </div>
-      <div id="cj-loading" style="display: flex; align-items: center; margin-bottom: 8px;">
+      <div id="cj-loading" style="display: flex; align-items: center; margin-bottom: 12px; justify-content: center; padding: 20px 0;">
         <div style="
-          width: 16px; 
-          height: 16px; 
-          border: 2px solid ${borderColor}; 
-          border-top: 2px solid #ff6b35; 
+          width: 20px; 
+          height: 20px; 
+          border: 3px solid ${borderColor}; 
+          border-top: 3px solid #ff6b35; 
           border-radius: 50%; 
           animation: spin 1s linear infinite;
         "></div>
-        <span style="margin-left: 8px; font-size: 12px;">Loading CJ result…</span>
+        <span style="margin-left: 10px; font-size: 13px; color: #666;">Loading product details...</span>
       </div>
       <div id="cj-results" style="font-size: 13px; color: ${textColor};">
         <!-- Result will be injected here -->
@@ -109,6 +109,28 @@ function showTooltip(anchor, keyword) {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+        .cj-product-image {
+          transition: transform 0.2s ease;
+        }
+        .cj-product-image:hover {
+          transform: scale(1.05);
+        }
+        .cj-affiliate-linkCode {
+          background: linear-gradient(45deg, #ff6b35, #f7931e);
+          color: white;
+          text-decoration: none;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: 600;
+          display: inline-block;
+          transition: all 0.2s ease;
+          margin-top: 8px;
+        }
+        .cj-affiliate-linkCode:hover {
+          background: linear-gradient(45deg, #e55a2b, #d9821a);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+        }
       </style>
     </div>
   `;
@@ -116,21 +138,21 @@ function showTooltip(anchor, keyword) {
   // Position tooltip below the anchor, adjusting if it goes outside viewport
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const tooltipWidth = 320; 
-  const tooltipHeight = 100; // initial guess; will expand if needed
+  const tooltipWidth = 350; 
+  const tooltipHeight = 200; // increased for image
 
   let left = rect.left + window.scrollX;
-  let top = rect.bottom + window.scrollY + 5;
+  let top = rect.bottom + window.scrollY + 8;
   
   if (left + tooltipWidth > viewportWidth) {
-    left = viewportWidth - tooltipWidth - 10;
+    left = viewportWidth - tooltipWidth - 15;
   }
-  if (left < 10) {
-    left = 10;
+  if (left < 15) {
+    left = 15;
   }
   
   if (top + tooltipHeight > viewportHeight + window.scrollY) {
-    top = rect.top + window.scrollY - tooltipHeight - 5;
+    top = rect.top + window.scrollY - tooltipHeight - 8;
   }
 
   tooltipContainer.style.top = `${top}px`;
@@ -149,24 +171,93 @@ function showTooltip(anchor, keyword) {
     if (!resultsElement) return;
 
     if (result.success && result.product) {
-      const { title, amount, currency } = result.product;
-      const priceDisplay = (amount !== null && currency) ? `${amount} ${currency}` : 'N/A';
-
-      resultsElement.innerHTML = `
-        <div style="margin-bottom: 6px; font-weight: bold; font-size: 14px;">
-          ${title.length > 70 ? title.substring(0, 67) + '…' : title}
-        </div>
-        <div style="font-size: 13px; color: #ff6b35; font-weight: 600;">
-          ${priceDisplay}
+      const { title, amount, currency, imagelinkCode, linkCode } = result.product;
+      const priceDisplay = (amount !== null && currency) ? `$${amount} ${currency}` : 'Price N/A';
+      
+      // Truncate long titles
+      const displayTitle = title.length > 60 ? title.substring(0, 57) + '...' : title;
+      
+      // Build the result HTML with image and linkCode
+      let resultHTML = `
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+      `;
+      
+      // Product image (if available)
+      if (imagelinkCode && imagelinkCode.trim() !== '') {
+        resultHTML += `
+          <div style="text-align: center;">
+            <img src="${imagelinkCode}" 
+                 alt="${title}" 
+                 class="cj-product-image"
+                 style="
+                   max-width: 200px; 
+                   max-height: 300px; 
+                   object-fit: contain; 
+                   border-radius: 8px;
+                   border: 2px solid ${isDarkMode ? '#444' : '#eee'};
+                   background: ${isDarkMode ? '#333' : '#f9f9f9'};
+                   padding: 8px;
+                 "
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+            />
+            <div style="display: none; padding: 20px; color: #888; font-size: 12px;">
+              📷 Image not available
+            </div>
+          </div>
+        `;
+      }
+      
+      // Product details
+      resultHTML += `
+          <div>
+            <div style="font-weight: bold; font-size: 14px; margin-bottom: 6px; line-height: 1.3;">
+              ${displayTitle}
+            </div>
+            <div style="font-size: 16px; color: #ff6b35; font-weight: 700; margin-bottom: 8px;">
+              ${priceDisplay}
+            </div>
+      `;
+      
+      // Affiliate linkCode (if available)
+      if (linkCode && linkCode.trim() !== '') {
+        resultHTML += `
+            <a href="${linkCode}" 
+               target="_blank" 
+               rel="noopener noreferrer"
+               class="cj-affiliate-linkCode"
+               onclick="console.log('🔗 Clicked affiliate linkCode:', '${linkCode}')">
+              🛒 View on CJ Affiliate
+            </a>
+        `;
+      } else {
+        resultHTML += `
+            <div style="color: #888; font-size: 12px; font-style: italic;">
+              🔗 Direct linkCode not available
+            </div>
+        `;
+      }
+      
+      resultHTML += `
+          </div>
         </div>
       `;
-      console.log(`📌 Displayed CJ result: Title="${title}", Price="${priceDisplay}"`);
+      
+      resultsElement.innerHTML = resultHTML;
+      console.log(`📌 Displayed CJ result: Title="${title}", Price="${priceDisplay}", Image="${imagelinkCode ? 'Yes' : 'No'}", linkCode="${linkCode ? 'Yes' : 'No'}"`);
+      
     } else {
       const msg = result.error 
         ? `Error: ${result.error}` 
         : 'No CJ Affiliate product found.';
       resultsElement.innerHTML = `
-        <div style="font-size: 13px; color: #888; font-style: italic;">
+        <div style="
+          text-align: center; 
+          padding: 20px; 
+          color: #888; 
+          font-style: italic; 
+          font-size: 13px;
+        ">
+          <div style="font-size: 24px; margin-bottom: 8px;">😕</div>
           ${msg}
         </div>
       `;
@@ -207,14 +298,15 @@ function highlightProducts(element, products) {
           return `<span class="product-highlight" 
                     data-product="${cleanProduct}" 
                     style="
-                      background-color: #ffeb3b; 
+                      background: linear-gradient(135deg, #ffeb3b, #ffc107);
                       font-weight: bold; 
-                      padding: 2px 6px; 
-                      border-radius: 4px; 
-                      border: 2px solid #fbc02d; 
+                      padding: 3px 8px; 
+                      border-radius: 6px; 
+                      border: 2px solid #ff9800; 
                       color: #333; 
                       cursor: pointer;
-                      transition: all 0.2s ease;
+                      transition: all 0.3s ease;
+                      box-shadow: 0 2px 4px rgba(255, 152, 0, 0.2);
                     ">${match}</span>`;
         });
         
@@ -230,67 +322,75 @@ function highlightProducts(element, products) {
     const highlights = element.querySelectorAll('.product-highlight');
     console.log(`🎯 Found ${highlights.length} highlighted elements`);
     
-  highlights.forEach((span, index) => {
-    console.log(`🔗 Adding events to highlight ${index + 1}: "${span.textContent}"`);
-    
-    let hoverTimeout;
-    
-    span.addEventListener('mouseenter', function() {
-      console.log(`🖱️ Mouse entered: "${this.textContent}"`);
+    highlights.forEach((span, index) => {
+      console.log(`🔗 Adding events to highlight ${index + 1}: "${span.textContent}"`);
+      
+      let hoverTimeout;
+      
+      span.addEventListener('mouseenter', function() {
+        console.log(`🖱️ Mouse entered: "${this.textContent}"`);
 
-      // Clear any pending hide
-      if (hoverTimeout) {
-        clearTimeout(hoverTimeout);
-      }
-      
-      // Visual feedback
-      this.style.backgroundColor = '#fdd835';
-      this.style.transform = 'scale(1.05)';
-      
-      const productName = this.getAttribute('data-product') || this.textContent.trim();
-      showTooltip(this, productName);
-    });
-    
-    span.addEventListener('mouseleave', function() {
-      console.log(`🖱️ Mouse left: "${this.textContent}"`);
-      
-      // Reset visual feedback
-      this.style.backgroundColor = '#ffeb3b';
-      this.style.transform = 'scale(1)';
-      
-      // Delay hiding tooltip to allow moving into it
-      hoverTimeout = setTimeout(() => {
-        if (!tooltipContainer.matches(':hover')) {
-          hideTooltip();
+        // Clear any pending hide
+        if (hoverTimeout) {
+          clearTimeout(hoverTimeout);
         }
-      }, 300);
+        
+        // Enhanced visual feedback
+        this.style.background = 'linear-gradient(135deg, #fdd835, #ffb300)';
+        this.style.transform = 'scale(1.05) translateY(-1px)';
+        this.style.boxShadow = '0 4px 12px rgba(255, 152, 0, 0.4)';
+        
+        const productName = this.getAttribute('data-product') || this.textContent.trim();
+        showTooltip(this, productName);
+      });
+      
+      span.addEventListener('mouseleave', function() {
+        console.log(`🖱️ Mouse left: "${this.textContent}"`);
+        
+        // Reset visual feedback
+        this.style.background = 'linear-gradient(135deg, #ffeb3b, #ffc107)';
+        this.style.transform = 'scale(1) translateY(0)';
+        this.style.boxShadow = '0 2px 4px rgba(255, 152, 0, 0.2)';
+        
+        // Delay hiding tooltip to allow moving into it
+        hoverTimeout = setTimeout(() => {
+          if (!tooltipContainer.matches(':hover')) {
+            hideTooltip();
+          }
+        }, 300);
+      });
+      
+      span.addEventListener('click', function(e) {
+        e.preventDefault();
+        console.log(`🖱️ Clicked: "${this.textContent}"`);
+        // Keep tooltip open on click for better UX
+        const productName = this.getAttribute('data-product') || this.textContent.trim();
+        showTooltip(this, productName);
+      });
+      
+      // Store reference for cleanup
+      observedElements.set(span, hoverTimeout);
     });
     
-    span.addEventListener('click', function(e) {
-      e.preventDefault();
-      console.log(`🖱️ Clicked: "${this.textContent}"`);
-      // No additional click action; CJ tooltip is primary
-    });
+    console.log(`✅ Added event listeners to ${highlights.length} highlights`);
     
-    // Store reference for cleanup
-    observedElements.set(span, hoverTimeout);
-  });
-  
-  console.log(`✅ Added event listeners to ${highlights.length} highlights`);
-  
-} catch (error) {
-  console.error('❌ Error in highlightProducts:', error);
-}
+  } catch (error) {
+    console.error('❌ Error in highlightProducts:', error);
+  }
 }
 
-// Tooltip mouse interactions
+// Enhanced tooltip mouse interactions
 tooltipContainer.addEventListener('mouseenter', function() {
   console.log('🖱️ Mouse entered tooltip');
 });
+
 tooltipContainer.addEventListener('mouseleave', function() {
   console.log('🖱️ Mouse left tooltip');
   hideTooltip();
 });
+
+// Allow clicking linkCodes in tooltip
+tooltipContainer.style.pointerEvents = 'auto';
 
 // Send text to server for product detection
 async function detectAndLogProducts(responseElement) {
@@ -438,4 +538,4 @@ window.addEventListener('beforeunload', () => {
   observedElements.clear();
 });
 
-console.log('✅ Product Detector initialized with CJ Affiliate integration...');
+console.log('✅ Product Detector initialized with enhanced CJ Affiliate integration (Images + linkCodes)...');

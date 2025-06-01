@@ -197,9 +197,23 @@ app.post('/search-cj-affiliate', async (req, res) => {
 
     console.log(`🔍 /search-cj-affiliate called with keyword: "${keyword}"`);
 
-    // Build the GraphQL query object (matching your working curl command)
+    // Build the GraphQL query object with image and link data
     const gqlQuery = {
-      query: `query { shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 1) { resultList { title price { amount currency } } } }`
+      query: `query { 
+        shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 1) { 
+          resultList { 
+            title 
+            price { 
+              amount 
+              currency 
+            }
+            imageLink
+            link
+            description
+            advertiserName
+          } 
+        } 
+      }`
     };
 
     console.log('📋 GraphQL Query Object:', JSON.stringify(gqlQuery, null, 2));
@@ -267,15 +281,30 @@ app.post('/search-cj-affiliate', async (req, res) => {
       const title = firstProduct.title || '';
       const amount = firstProduct.price?.amount ?? null;
       const currency = firstProduct.price?.currency ?? '';
+      const imageLink = firstProduct.imageLink || null;
+      const link = firstProduct.link || null;
+      const description = firstProduct.description || '';
+      const advertiserName = firstProduct.advertiserName || '';
 
-      console.log('✅ First CJ product found:', { title, amount, currency });
+      console.log('✅ First CJ product found:', { 
+        title, 
+        amount, 
+        currency, 
+        imageLink, 
+        link, 
+        advertiserName 
+      });
 
       return res.json({
         success: true,
         product: {
           title,
           amount,
-          currency
+          currency,
+          imageLink,
+          link,
+          description,
+          advertiserName
         },
         totalCount: productsList.length,
         keyword: keyword
