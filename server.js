@@ -200,7 +200,7 @@ app.post('/search-cj-affiliate', async (req, res) => {
     // Build the GraphQL query object (matching your working curl command)
     // Added imageLink and link fields for image and affiliate link
     const gqlQuery = {
-      query: `query { shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 1) { resultList { title price { amount currency } imageLink link } } }`
+      query: `query { shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 4) { resultList { title price { amount currency } imageLink link } } }`
     };
 
     console.log('📋 GraphQL Query Object:', JSON.stringify(gqlQuery, null, 2));
@@ -318,6 +318,154 @@ app.post('/search-cj-affiliate', async (req, res) => {
       });
     }
 
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+// Add this new endpoint to server.js
+app.post('/get-all-cj-products', async (req, res) => {
+  try {
+    const { products } = req.body;
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({ success: false, error: 'Products array is required' });
+    }
+
+    console.log(`🔍 /get-all-cj-products called with ${products.length} products`);
+
+    const allProductsData = [];
+
+    // Search for each detected product
+    for (const keyword of products) {
+      try {
+        const gqlQuery = {
+          query: `query { shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 4) { resultList { title price { amount currency } imageLink link } } }`
+        };
+
+        const response = await fetch('https://ads.api.cj.com/query', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${CJ_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(gqlQuery)
+        });
+
+        if (!response.ok) {
+          console.error(`❌ CJ API error for "${keyword}":`, response.status);
+          continue;
+        }
+
+        const json = await response.json();
+        const productsList = json.data?.shoppingProducts?.resultList || [];
+        
+        if (productsList.length > 1) {
+          // Get products 2, 3, 4 (indices 1, 2, 3)
+          const additionalProducts = productsList.slice(1, 4).map(product => ({
+            title: product.title || '',
+            amount: product.price?.amount ?? null,
+            currency: product.price?.currency ?? '',
+            imageLink: product.imageLink || '',
+            link: product.link || '',
+            originalKeyword: keyword
+          }));
+          
+          allProductsData.push(...additionalProducts);
+        }
+      } catch (error) {
+        console.error(`❌ Error searching for "${keyword}":`, error);
+      }
+    }
+
+    console.log(`✅ Found ${allProductsData.length} additional products`);
+
+    return res.json({
+      success: true,
+      products: allProductsData,
+      totalCount: allProductsData.length
+    });
+
+  } catch (error) {
+    console.error('❌ /get-all-cj-products error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+
+// Add this new endpoint to your server.js file after the existing /search-cj-affiliate endpoint
+
+// ===========================
+// NEW: Get all CJ products (2nd, 3rd, 4th) for detected products
+// ===========================
+app.post('/get-all-cj-products', async (req, res) => {
+  try {
+    const { products } = req.body;
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({ success: false, error: 'Products array is required' });
+    }
+
+    console.log(`🔍 /get-all-cj-products called with ${products.length} products`);
+
+    const allProductsData = [];
+
+    // Search for each detected product
+    for (const keyword of products) {
+      try {
+        const gqlQuery = {
+          query: `query { shoppingProducts(companyId: ${CJ_COMPANY_ID}, keywords: "${keyword}", limit: 4) { resultList { title price { amount currency } imageLink link } } }`
+        };
+
+        const response = await fetch('https://ads.api.cj.com/query', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${CJ_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(gqlQuery)
+        });
+
+        if (!response.ok) {
+          console.error(`❌ CJ API error for "${keyword}":`, response.status);
+          continue;
+        }
+
+        const json = await response.json();
+        const productsList = json.data?.shoppingProducts?.resultList || [];
+        
+        if (productsList.length > 1) {
+          // Get products 2, 3, 4 (indices 1, 2, 3)
+          const additionalProducts = productsList.slice(1, 4).map(product => ({
+            title: product.title || '',
+            amount: product.price?.amount ?? null,
+            currency: product.price?.currency ?? '',
+            imageLink: product.imageLink || '',
+            link: product.link || '',
+            originalKeyword: keyword
+          }));
+          
+          allProductsData.push(...additionalProducts);
+        }
+      } catch (error) {
+        console.error(`❌ Error searching for "${keyword}":`, error);
+      }
+    }
+
+    console.log(`✅ Found ${allProductsData.length} additional products`);
+
+    return res.json({
+      success: true,
+      products: allProductsData,
+      totalCount: allProductsData.length
+    });
+
+  } catch (error) {
+    console.error('❌ /get-all-cj-products error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
