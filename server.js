@@ -326,6 +326,8 @@ app.post('/search-cj-affiliate', async (req, res) => {
   }
 });
 // Add this new endpoint to server.js
+// Add this endpoint to your server.js file after the existing /search-cj-affiliate endpoint
+
 app.post('/get-all-cj-products', async (req, res) => {
   try {
     const { products } = req.body;

@@ -91,6 +91,212 @@ async function getAllCJProducts(products) {
   }
 }
 
+// ADD this function after getAllCJProducts
+function createProductCards(products) {
+  if (!products || products.length === 0) {
+    console.log('❌ No products to create cards for');
+    return;
+  }
+
+  console.log(`🎴 Creating cards for ${products.length} products`);
+
+  // Remove existing cards container if any
+  if (cardsContainer) {
+    cardsContainer.remove();
+  }
+
+  // Find the last assistant message
+  const assistantMessages = document.querySelectorAll('[data-message-author-role="assistant"]');
+  if (assistantMessages.length === 0) {
+    console.log('❌ No assistant message found to append cards');
+    return;
+  }
+
+  const lastMessage = assistantMessages[assistantMessages.length - 1];
+  const messageContainer = lastMessage.closest('.group') || lastMessage.parentElement;
+
+  // Create cards container
+  cardsContainer = document.createElement('div');
+  cardsContainer.style.cssText = `
+    margin-top: 20px;
+    padding: 16px;
+    border-top: 2px solid #e5e7eb;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 12px;
+  `;
+
+  // Create "See More" toggle button
+  const toggleButton = document.createElement('button');
+  toggleButton.innerHTML = '🛍️ See More Products';
+  toggleButton.style.cssText = `
+    background: linear-gradient(45deg, #3b82f6, #1d4ed8);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  `;
+
+  // Create cards row container (initially hidden)
+  const cardsRow = document.createElement('div');
+  cardsRow.style.cssText = `
+    display: none;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  `;
+
+  let isExpanded = false;
+
+  // Toggle functionality
+  toggleButton.addEventListener('click', () => {
+    isExpanded = !isExpanded;
+    if (isExpanded) {
+      cardsRow.style.display = 'grid';
+      toggleButton.innerHTML = '🔼 Hide Products';
+      toggleButton.style.background = 'linear-gradient(45deg, #ef4444, #dc2626)';
+    } else {
+      cardsRow.style.display = 'none';
+      toggleButton.innerHTML = '🛍️ See More Products';
+      toggleButton.style.background = 'linear-gradient(45deg, #3b82f6, #1d4ed8)';
+    }
+  });
+
+  // Create individual product cards
+  products.forEach((product, index) => {
+    const card = document.createElement('div');
+    const isDarkMode = document.documentElement.classList.contains('dark') || 
+                       document.body.classList.contains('dark');
+    
+    const bgColor = isDarkMode ? '#1f2937' : '#ffffff';
+    const textColor = isDarkMode ? '#ffffff' : '#1f2937';
+    const borderColor = isDarkMode ? '#374151' : '#e5e7eb';
+    
+    card.style.cssText = `
+      background: ${bgColor};
+      border: 1px solid ${borderColor};
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+      cursor: pointer;
+    `;
+
+    // Hover effects
+    card.addEventListener('mouseenter', () => {
+      card.style.transform = 'translateY(-4px)';
+      card.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)';
+    });
+    
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = 'translateY(0)';
+      card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+    });
+
+    const priceDisplay = (product.amount !== null && product.currency) 
+      ? `$${product.amount} ${product.currency}` 
+      : 'Price N/A';
+    
+    const displayTitle = product.title.length > 50 
+      ? product.title.substring(0, 47) + '...' 
+      : product.title;
+
+    card.innerHTML = `
+      <div style="text-align: center;">
+        ${product.imageLink ? `
+          <img src="${product.imageLink}" 
+               alt="${product.title}" 
+               style="
+                 width: 100%;
+                 max-height: 150px;
+                 object-fit: contain;
+                 border-radius: 8px;
+                 margin-bottom: 12px;
+                 background: ${isDarkMode ? '#374151' : '#f9fafb'};
+                 padding: 8px;
+               "
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+          />
+          <div style="display: none; padding: 20px; color: #6b7280; font-size: 12px;">
+            📷 Image not available
+          </div>
+        ` : `
+          <div style="
+            height: 150px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: ${isDarkMode ? '#374151' : '#f3f4f6'};
+            border-radius: 8px;
+            margin-bottom: 12px;
+            color: #6b7280;
+          ">
+            📦 No Image
+          </div>
+        `}
+        
+        <h3 style="
+          font-size: 14px;
+          font-weight: 600;
+          color: ${textColor};
+          margin: 0 0 8px 0;
+          line-height: 1.3;
+          min-height: 36px;
+        ">${displayTitle}</h3>
+        
+        <div style="
+          font-size: 16px;
+          font-weight: 700;
+          color: #f59e0b;
+          margin-bottom: 12px;
+        ">${priceDisplay}</div>
+        
+        ${product.link ? `
+          <a href="${product.link}" 
+             target="_blank" 
+             rel="noopener noreferrer"
+             style="
+               background: linear-gradient(45deg, #10b981, #059669);
+               color: white;
+               text-decoration: none;
+               padding: 8px 16px;
+               border-radius: 6px;
+               font-size: 12px;
+               font-weight: 500;
+               display: inline-block;
+               transition: all 0.2s ease;
+             "
+             onmouseover="this.style.background='linear-gradient(45deg, #059669, #047857)'"
+             onmouseout="this.style.background='linear-gradient(45deg, #10b981, #059669)'"
+          >
+            🛒 View Product
+          </a>
+        ` : `
+          <div style="color: #6b7280; font-size: 12px; font-style: italic;">
+            🔗 Link not available
+          </div>
+        `}
+      </div>
+    `;
+
+    cardsRow.appendChild(card);
+  });
+
+  // Assemble the complete cards container
+  cardsContainer.appendChild(toggleButton);
+  cardsContainer.appendChild(cardsRow);
+
+  // Append to message container
+  messageContainer.appendChild(cardsContainer);
+  
+  console.log(`✅ Created ${products.length} product cards`);
+}
+
 function createProductCards(products) {
   if (!products || products.length === 0) {
     console.log('❌ No products to create cards for');
@@ -512,8 +718,17 @@ function highlightProducts(element, products) {
   console.log('🎯 Highlighting', products.length, 'products');
 
   try {
-    let html = element.innerHTML;
-    
+// Get original text content to avoid processing already highlighted HTML
+let html = element.innerHTML;
+
+// Remove existing highlights first to prevent nesting
+const tempDiv = document.createElement('div');
+tempDiv.innerHTML = html;
+const existingHighlights = tempDiv.querySelectorAll('.product-highlight');
+existingHighlights.forEach(highlight => {
+  highlight.outerHTML = highlight.textContent;
+});
+html = tempDiv.innerHTML;    
     products.forEach(product => {
       if (!product || typeof product !== 'string') return;
       
@@ -615,7 +830,14 @@ tooltipContainer.addEventListener('mouseleave', function() {
 tooltipContainer.style.pointerEvents = 'auto';
 
 // Send text to server for product detection
+// Send text to server for product detection
 async function detectAndLogProducts(responseElement) {
+  // Skip if already processed to prevent re-highlighting
+  if (responseElement.querySelector('.product-highlight')) {
+    console.log('⏭️ Element already has highlights, skipping');
+    return;
+  }
+
   const text = responseElement.innerText || responseElement.textContent || '';
   if (!text || text.length < 100) {
     console.log('⚠️ Text too short, skipping detection');
@@ -641,12 +863,11 @@ async function detectAndLogProducts(responseElement) {
     if (!response.ok) {
       console.error('❌ Server error:', response.status);
       console.log('🧪 Server failed, adding test products for debugging...');
-      const testProducts = ['iPhone', 'MacBook', 'AirPods'];
-      highlightProducts(responseElement, testProducts);
+      highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods']);
       
       // Create cards for test products
-      detectedProductsForCards = testProducts;
-      getAllCJProducts(testProducts).then(allProductsResult => {
+      detectedProductsForCards = ['iPhone', 'MacBook', 'AirPods'];
+      getAllCJProducts(['iPhone', 'MacBook', 'AirPods']).then(allProductsResult => {
         if (allProductsResult.success && allProductsResult.products.length > 0) {
           createProductCards(allProductsResult.products);
         }
@@ -676,16 +897,14 @@ async function detectAndLogProducts(responseElement) {
           createProductCards(allProductsResult.products);
         }
       });
-      
     } else {
       console.log('📊 No products detected');
       console.log('🧪 Adding test products for debugging...');
-      const testProducts = ['iPhone', 'MacBook', 'AirPods'];
-      highlightProducts(responseElement, testProducts);
+      highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods']);
       
       // Create cards for test products
-      detectedProductsForCards = testProducts;
-      getAllCJProducts(testProducts).then(allProductsResult => {
+      detectedProductsForCards = ['iPhone', 'MacBook', 'AirPods'];
+      getAllCJProducts(['iPhone', 'MacBook', 'AirPods']).then(allProductsResult => {
         if (allProductsResult.success && allProductsResult.products.length > 0) {
           createProductCards(allProductsResult.products);
         }
@@ -696,12 +915,11 @@ async function detectAndLogProducts(responseElement) {
   } catch (error) {
     console.error('❌ Error detecting products:', error);
     console.log('🧪 Server failed, adding test products for debugging...');
-    const testProducts = ['iPhone', 'MacBook', 'AirPods'];
-    highlightProducts(responseElement, testProducts);
+    highlightProducts(responseElement, ['iPhone', 'MacBook', 'AirPods']);
     
     // Create cards for test products
-    detectedProductsForCards = testProducts;
-    getAllCJProducts(testProducts).then(allProductsResult => {
+    detectedProductsForCards = ['iPhone', 'MacBook', 'AirPods'];
+    getAllCJProducts(['iPhone', 'MacBook', 'AirPods']).then(allProductsResult => {
       if (allProductsResult.success && allProductsResult.products.length > 0) {
         createProductCards(allProductsResult.products);
       }
