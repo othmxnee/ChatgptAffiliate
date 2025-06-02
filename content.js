@@ -718,17 +718,33 @@ function highlightProducts(element, products) {
   console.log('🎯 Highlighting', products.length, 'products');
 
   try {
-// Get original text content to avoid processing already highlighted HTML
-let html = element.innerHTML;
-
-// Remove existing highlights first to prevent nesting
-const tempDiv = document.createElement('div');
-tempDiv.innerHTML = html;
-const existingHighlights = tempDiv.querySelectorAll('.product-highlight');
-existingHighlights.forEach(highlight => {
-  highlight.outerHTML = highlight.textContent;
-});
-html = tempDiv.innerHTML;    
+    // Create a temporary div to work with plain text first
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = element.innerHTML;
+    
+    // Remove existing highlights first to prevent nesting
+    const existingHighlights = tempDiv.querySelectorAll('.product-highlight');
+    existingHighlights.forEach(highlight => {
+      const textNode = document.createTextNode(highlight.textContent);
+      highlight.parentNode.replaceChild(textNode, highlight);
+    });
+    
+    // Now work with the cleaned content
+    // We'll process text nodes directly to avoid HTML entity issues
+    const walker = document.createTreeWalker(
+      tempDiv,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) {
+      textNodes.push(node);
+    }
+    
+    // Process each product for highlighting
     products.forEach(product => {
       if (!product || typeof product !== 'string') return;
       
@@ -736,33 +752,72 @@ html = tempDiv.innerHTML;
       if (cleanProduct.length < 3) return;
       
       try {
-        // Escape for regex
+        // Create regex that handles the product name case-insensitively
+        // Escape ALL special regex characters including &, (), [], etc.
         const escapedProduct = cleanProduct.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\b(${escapedProduct})\\b`, 'gi');
         
-        html = html.replace(regex, (match) => {
-          return `<span class="product-highlight" 
-                    data-product="${cleanProduct}" 
-                    style="
-                      font-weight: bold; 
-                      cursor: pointer;
-                      text-decoration: underline;
-                      text-decoration-color: #ffc107;
-                      text-decoration-thickness: 2px;
-                    ">${match}</span>`;
+        // For products with special characters, we might need to be more flexible with word boundaries
+        let regex;
+        if (/[()[\]{}]/.test(cleanProduct)) {
+          // For products with brackets, use lookahead/lookbehind for word boundaries
+          // This handles cases like "Product (Model)" better
+          regex = new RegExp(`(?<!\\w)${escapedProduct}(?!\\w)`, 'gi');
+        } else {
+          // For regular products, use standard word boundaries
+          regex = new RegExp(`\\b${escapedProduct}\\b`, 'gi');
+        }
+        
+        console.log(`🔍 Looking for: "${cleanProduct}" with regex: ${regex}`);
+        
+        // Process each text node
+        textNodes.forEach(textNode => {
+          const originalText = textNode.textContent;
+          
+          if (regex.test(originalText)) {
+            console.log(`✅ Found "${cleanProduct}" in text node`);
+            
+            // Create replacement HTML
+            const highlightedText = originalText.replace(regex, (match) => {
+              return `<span class="product-highlight" 
+                        data-product="${cleanProduct}" 
+                        style="
+                          font-weight: bold; 
+                          cursor: pointer;
+                          text-decoration: underline;
+                          text-decoration-color: #ffc107;
+                          text-decoration-thickness: 2px;
+                        ">${match}</span>`;
+            });
+            
+            // Only replace if we actually made changes
+            if (highlightedText !== originalText) {
+              // Create a temporary container to hold the new HTML
+              const tempContainer = document.createElement('div');
+              tempContainer.innerHTML = highlightedText;
+              
+              // Replace the text node with the highlighted content
+              const fragment = document.createDocumentFragment();
+              while (tempContainer.firstChild) {
+                fragment.appendChild(tempContainer.firstChild);
+              }
+              
+              textNode.parentNode.replaceChild(fragment, textNode);
+            }
+          }
         });
         
-        console.log(`✅ Highlighted: "${cleanProduct}"`);
+        console.log(`✅ Processed highlighting for: "${cleanProduct}"`);
       } catch (error) {
         console.log(`⚠️ Could not highlight: "${cleanProduct}"`, error);
       }
     });
     
-    element.innerHTML = html;
+    // Apply the changes back to the original element
+    element.innerHTML = tempDiv.innerHTML;
     
-    // Add event listeners
+    // Add event listeners to all highlighted elements
     const highlights = element.querySelectorAll('.product-highlight');
-    console.log(`🎯 Found ${highlights.length} highlighted elements`);
+    console.log(`🎯 Found ${highlights.length} highlighted elements after processing`);
     
     highlights.forEach((span, index) => {
       console.log(`🔗 Adding events to highlight ${index + 1}: "${span.textContent}"`);
@@ -777,17 +832,12 @@ html = tempDiv.innerHTML;
           clearTimeout(hoverTimeout);
         }
         
-        // Enhanced visual feedback
-  
-        
         const productName = this.getAttribute('data-product') || this.textContent.trim();
         showTooltip(this, productName);
       });
       
       span.addEventListener('mouseleave', function() {
         console.log(`🖱️ Mouse left: "${this.textContent}"`);
-        
-
         
         // Delay hiding tooltip to allow moving into it
         hoverTimeout = setTimeout(() => {

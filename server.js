@@ -22,7 +22,7 @@ app.use(express.json());
 async function detectProducts(text) {
   const { GoogleGenerativeAI } = require('@google/generative-ai');
   // Replace with your actual API key
-  const genAI = new GoogleGenerativeAI('AIzaSyDxfyjUFLba7TbmDo50SU2zGbNs2U1bhOc');
+  const genAI = new GoogleGenerativeAI('AIzaSyCLsCGJTJ3eBG6-3yxLujejQF2FS7u0Vu8');
   const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   const prompt = `
