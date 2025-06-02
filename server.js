@@ -1,4 +1,5 @@
 // server.js
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 // Note: In Node 18+ 'fetch' is available globally. If you're on an older Node version,
@@ -11,8 +12,8 @@ const port = 3000;
 // ====================
 // Replace these with your actual CJ Affiliate credentials:
 const CJ_API_BASE_URL = 'https://ads.api.cj.com/';
-const CJ_COMPANY_ID = 7546327;
-const CJ_API_TOKEN = '_WAACYG-K6gq63WULgxMKbsybw'; // your "token:" value
+const CJ_COMPANY_ID = process.env.CJ_COMPANY_ID;
+const CJ_API_TOKEN = process.env.CJ_API_TOKEN; // your "token:" value
 // ====================
 
 // Middleware
@@ -22,7 +23,7 @@ app.use(express.json());
 async function detectProducts(text) {
   const { GoogleGenerativeAI } = require('@google/generative-ai');
   // Replace with your actual API key
-  const genAI = new GoogleGenerativeAI('AIzaSyCLsCGJTJ3eBG6-3yxLujejQF2FS7u0Vu8');
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   const prompt = `
