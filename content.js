@@ -128,18 +128,23 @@ function createProductCards(products) {
   // Create "See More" toggle button
   const toggleButton = document.createElement('button');
   toggleButton.innerHTML = 'See More Products';
-  toggleButton.style.cssText = `
-  background: linear-gradient(45deg, #6b7280, #374151);
-  color: black;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 16px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
+ // 2. Change the toggle button to adapt to dark/light mode (around line 230)
+const isDarkMode = document.documentElement.classList.contains('dark') || 
+document.body.classList.contains('dark');
+const buttonTextColor = isDarkMode ? '#ffffff' : '#000000';
+
+toggleButton.style.cssText = `
+background: transparent;
+color: ${buttonTextColor};
+border: none;
+padding: 4px 8px;
+border-radius: 4px;
+cursor: pointer;
+font-size: 12px;
+font-weight: 400;
+margin-bottom: 12px;
+transition: all 0.2s ease;
+box-shadow: none;
 `;
 
   // Create cards row container (initially hidden)
@@ -156,15 +161,19 @@ function createProductCards(products) {
   // Toggle functionality
   toggleButton.addEventListener('click', () => {
     isExpanded = !isExpanded;
-    if (isExpanded) {
-      cardsRow.style.display = 'grid';
-      toggleButton.innerHTML = 'Hide Products';
-      toggleButton.style.background = 'linear-gradient(45deg, #374151, #1f2937)';
-    } else {
-      cardsRow.style.display = 'none';
-      toggleButton.innerHTML = 'See More Products';
-      toggleButton.style.background = 'linear-gradient(45deg, #6b7280, #374151)';
-    } 
+    const isDarkModeToggle = document.documentElement.classList.contains('dark') || 
+    document.body.classList.contains('dark');
+const toggleTextColor = isDarkModeToggle ? '#ffffff' : '#000000';
+
+if (isExpanded) {
+cardsRow.style.display = 'grid';
+toggleButton.innerHTML = 'Hide Products';
+toggleButton.style.color = toggleTextColor;
+} else {
+cardsRow.style.display = 'none';
+toggleButton.innerHTML = 'See More Products';
+toggleButton.style.color = toggleTextColor;
+}
   });
 
   // Create individual product cards
@@ -349,16 +358,21 @@ function createProductCards(products) {
   // Create "See More" toggle button
   const toggleButton = document.createElement('button');
   toggleButton.innerHTML = 'See More Products';
-  toggleButton.style.cssText = `
+  // 2. Change the toggle button to adapt to dark/light mode (around line 230)
+const isDarkMode = document.documentElement.classList.contains('dark') || 
+                   document.body.classList.contains('dark');
+const buttonTextColor = isDarkMode ? '#ffffff' : '#000000';
+
+toggleButton.style.cssText = `
   background: transparent;
-  color: black;
-  border: 1px solid #e5e7eb;
-  padding: 8px 16px;
-  border-radius: 6px;
+  color: ${buttonTextColor};
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 400;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   transition: all 0.2s ease;
   box-shadow: none;
 `;
@@ -377,15 +391,19 @@ function createProductCards(products) {
   // Toggle functionality
   toggleButton.addEventListener('click', () => {
     isExpanded = !isExpanded;
-    if (isExpanded) {
-      cardsRow.style.display = 'grid';
-      toggleButton.innerHTML = 'Hide Products';
-      toggleButton.style.color = 'black';
-    } else {
-      cardsRow.style.display = 'none';
-      toggleButton.innerHTML = 'See More Products';
-      toggleButton.style.color = 'black';
-    }
+    const isDarkModeToggle = document.documentElement.classList.contains('dark') || 
+    document.body.classList.contains('dark');
+const toggleTextColor = isDarkModeToggle ? '#ffffff' : '#000000';
+
+if (isExpanded) {
+cardsRow.style.display = 'grid';
+toggleButton.innerHTML = 'Hide Products';
+toggleButton.style.color = toggleTextColor;
+} else {
+cardsRow.style.display = 'none';
+toggleButton.innerHTML = 'See More Products';
+toggleButton.style.color = toggleTextColor;
+}
   });
 
   // Create individual product cards
@@ -847,13 +865,28 @@ function highlightProducts(element, products) {
         }, 300);
       });
       
-      span.addEventListener('click', function(e) {
-        e.preventDefault();
-        console.log(`🖱️ Clicked: "${this.textContent}"`);
-        // Keep tooltip open on click for better UX
-        const productName = this.getAttribute('data-product') || this.textContent.trim();
-        showTooltip(this, productName);
-      });
+     // In the highlightProducts function, replace the click event listener (around line 240):
+
+span.addEventListener('click', function(e) {
+  e.preventDefault();
+  console.log(`🖱️ Clicked: "${this.textContent}"`);
+  
+  const productName = this.getAttribute('data-product') || this.textContent.trim();
+  
+  // Search for the product and get its link
+  searchCJAffiliate(productName).then(result => {
+    if (result.success && result.product && result.product.link) {
+      // Open the product link in new tab
+      window.open(result.product.link, '_blank', 'noopener,noreferrer');
+      console.log(`🔗 Opened product link: ${result.product.link}`);
+    } else {
+      console.log(`❌ No link available for: ${productName}`);
+    }
+  });
+  
+  // Keep tooltip open for better UX
+  showTooltip(this, productName);
+});
       
       // Store reference for cleanup
       observedElements.set(span, hoverTimeout);
@@ -1102,19 +1135,25 @@ function createProductCards(products) {
   // Create "See More" toggle button
   const toggleButton = document.createElement('button');
   toggleButton.innerHTML = 'See More Products';
-  toggleButton.style.cssText = `
-    background-color:transparent;
-    color: black;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 400;
-    margin-bottom: 12px;
-    transition: all 0.2s ease;
-    box-shadow: none;
-  `;
+// 2. Change the toggle button to adapt to dark/light mode (around line 230)
+const isDarkMode = document.documentElement.classList.contains('dark') || 
+                   document.body.classList.contains('dark');
+const buttonTextColor = isDarkMode ? '#ffffff' : '#000000';
+
+toggleButton.style.cssText = `
+  background: transparent;
+  color: ${buttonTextColor};
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+  box-shadow: none;
+`;
+
 
   // Create cards row container (initially hidden)
   const cardsRow = document.createElement('div');
@@ -1130,15 +1169,19 @@ function createProductCards(products) {
   // Toggle functionality
   toggleButton.addEventListener('click', () => {
     isExpanded = !isExpanded;
-    if (isExpanded) {
-      cardsRow.style.display = 'grid';
-      toggleButton.innerHTML = 'Hide Products';
-      toggleButton.style.color = "black";
-    } else {
-      cardsRow.style.display = 'none';
-      toggleButton.innerHTML = 'See More Products';
-      toggleButton.style.color = "black";
-    }
+    const isDarkModeToggle = document.documentElement.classList.contains('dark') || 
+                         document.body.classList.contains('dark');
+const toggleTextColor = isDarkModeToggle ? '#ffffff' : '#000000';
+
+if (isExpanded) {
+  cardsRow.style.display = 'grid';
+  toggleButton.innerHTML = 'Hide Products';
+  toggleButton.style.color = toggleTextColor;
+} else {
+  cardsRow.style.display = 'none';
+  toggleButton.innerHTML = 'See More Products';
+  toggleButton.style.color = toggleTextColor;
+}
   });
 
   // Create individual product cards

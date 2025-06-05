@@ -5,9 +5,7 @@
     "version": "1.1",
 
     "description": "Detects product recommendations in ChatGPT responses and logs to console",
-    "permissions": [
-      "activeTab"
-    ],
+    "permissions": [],
     "host_permissions": [
       "https://chat.openai.com/*",
       "https://chatgpt.com/*",
